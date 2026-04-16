@@ -23,8 +23,6 @@ desktop.ini
 *.swp
 *.swo
 *~
-*.orig
-*.rej
 
 # ------------------------------------------------------------------------------
 # Environment / secrets
@@ -41,34 +39,15 @@ desktop.ini
 *.crt
 *.p12
 *.pfx
-*.cer
-*.der
-*.kdbx
-*.mobileprovision
 
-# Auth/session artifacts
+# Auth / session artifacts
 **/.auth/
 **/auth-state*.json
 **/storageState*.json
 **/playwright/.auth/
-research/raw/playwright-target/auth/**
-research/raw/playwright-clone/auth/**
-research/raw/computer-use/**/cookies.json
-research/raw/computer-use/**/session.json
-
-# Claude / agent local config
-.claude/
-.claude-code/
-.anthropic/
-.cursor/
-.cursor-cache/
-.cursor-server/
-.cursor-tutor/
-.cursor-index/
-.cursor/rules/generated/
 
 # ------------------------------------------------------------------------------
-# Logs / debug / temp
+# Logs / temp / caches
 # ------------------------------------------------------------------------------
 logs/
 *.log
@@ -86,53 +65,52 @@ lerna-debug.log*
 tmp/
 temp/
 .cache/
-.cache-loader/
 .eslintcache
 .stylelintcache
 *.tsbuildinfo
 
 # ------------------------------------------------------------------------------
-# Node / JS / TS
+# Node / pnpm / frontend
 # ------------------------------------------------------------------------------
 node_modules/
 .pnpm-store/
-.pnpm-debug.log*
 .npm/
 .yarn/
-.yarn-cache/
-.yarnrc.yml
-.parcel-cache/
 .turbo/
-.turbocache/
+.next/
+.next-cache/
+.parcel-cache/
 dist/
 build/
 out/
-storybook-static/
 coverage/
-lib-cov/
-.nyc_output/
+storybook-static/
 
-# Next.js / React / frontend build outputs
-.next/
-.vercel/
-.next-cache/
-.next-turbo/
+# App-specific frontend outputs
+apps/web/node_modules/
 apps/web/.next/
 apps/web/out/
-apps/web/build/
 apps/web/dist/
+apps/web/build/
 apps/web/coverage/
-apps/web/.vercel/
 apps/web/test-results/
 apps/web/playwright-report/
 apps/web/blob-report/
-apps/web/.next-cache/
 apps/web/.turbo/
 
-# Frontend generated local artifacts
-apps/web/public/__generated__/
-apps/web/src/generated/**
-!apps/web/src/generated/.gitkeep
+apps/desktop/node_modules/
+apps/desktop/dist/
+apps/desktop/out/
+apps/desktop/build/
+apps/desktop/release/
+apps/desktop/.webpack/
+apps/desktop/.vite/
+apps/desktop/.turbo/
+
+# Package build outputs
+packages/*/node_modules/
+packages/*/dist/
+packages/*/build/
 
 # ------------------------------------------------------------------------------
 # Playwright / browser automation
@@ -141,57 +119,27 @@ playwright-report/
 blob-report/
 test-results/
 test-artifacts/
-.trace/
+.traces/
 traces/
 videos/
 screenshots/
-snapshots/
 *.trace
 *.har
 *.webm
 *.mp4
 
-# Keep stable intentional snapshots only if you choose to version them.
-# By default ignore all generated snapshot artifacts:
-**/__screenshots__/
-**/__image_snapshots__/
-**/__diff_output__/
-**/playwright/.cache/
-
-# Raw target/clone capture artifacts are usually huge and should not be versioned.
-research/raw/**
-!research/raw/.gitkeep
-
-# If you want normalized manifests versioned, keep them.
-# Reports are generally generated and should be ignored.
-research/reports/**
-!research/reports/.gitkeep
-
-# Generated diffs / parity outputs
-generated/diffs/**
-!generated/diffs/.gitkeep
-
-# Generated codegen outputs: keep or ignore based on your workflow.
-# Default here: ignore machine-generated intermediate codegen artifacts,
-# but keep committed app code in apps/.
-generated/codegen/**
-!generated/codegen/.gitkeep
-generated/manifests/**
-!generated/manifests/.gitkeep
-
 # ------------------------------------------------------------------------------
-# Python / FastAPI / backend
+# Python / FastAPI
 # ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 .python-version
-.pytype/
-.pyre/
 .pytest_cache/
 .mypy_cache/
-.dmypy.json
 .ruff_cache/
+.pyre/
+.pytype/
 .hypothesis/
 .tox/
 .nox/
@@ -199,35 +147,25 @@ __pycache__/
 .coverage.*
 htmlcov/
 site/
-pip-wheel-metadata/
+.eggs/
 *.egg
 *.egg-info/
-.eggs/
-build/
-dist/
+pip-wheel-metadata/
 
-# Virtualenvs
 .venv/
 venv/
 ENV/
 env/
-env.bak/
-venv.bak/
 
-# Backend local outputs
+# API-specific Python junk
 apps/api/.venv/
 apps/api/.pytest_cache/
 apps/api/.mypy_cache/
 apps/api/.ruff_cache/
 apps/api/htmlcov/
 apps/api/coverage/
-apps/api/reports/pytest/**
-!apps/api/reports/pytest/.gitkeep
-apps/api/reports/openapi/**
-!apps/api/reports/openapi/.gitkeep
 
-# Alembic / DB temp
-alembic.ini.bak
+# Databases / local data
 *.sqlite
 *.sqlite3
 *.db
@@ -237,121 +175,77 @@ pgdata/
 .pgdata/
 
 # ------------------------------------------------------------------------------
-# Electron / desktop
+# Docker / container junk
 # ------------------------------------------------------------------------------
-apps/desktop/node_modules/
-apps/desktop/dist/
-apps/desktop/out/
-apps/desktop/build/
-apps/desktop/release/
-apps/desktop/.webpack/
-apps/desktop/.vite/
-apps/desktop/.turbo/
-apps/desktop/reports/packaging/**
-!apps/desktop/reports/packaging/.gitkeep
-
-# Electron Forge / builders
-*.dmg
-*.exe
-*.msi
-*.appx
-*.AppImage
-*.deb
-*.rpm
-*.pkg
-*.snap
-*.blockmap
-latest*.yml
-
-# ------------------------------------------------------------------------------
-# Docker / containers
-# ------------------------------------------------------------------------------
-.docker/
 docker-data/
 *.tar
 *.tar.gz
-*.img
 docker-compose.override.yml
 
 # ------------------------------------------------------------------------------
-# Docs / generated docs / exports
+# Claude / agent local folders
 # ------------------------------------------------------------------------------
-*.pdf
-*.pptx
-*.docx
-# Uncomment if you generate these locally and don't want them committed:
-# docs/generated/**
-# deployment/releases/**
-# !deployment/releases/.gitkeep
+.claude/
+.claude-code/
+.anthropic/
+.cursor/
+.cursor-cache/
 
 # ------------------------------------------------------------------------------
-# Monorepo packages / generated clients
+# Research artifacts
 # ------------------------------------------------------------------------------
-packages/api-client/generated/**
-!packages/api-client/generated/.gitkeep
-packages/ui/dist/
-packages/ui/build/
-packages/config/dist/
-packages/spec-types/dist/
-packages/test-utils/dist/
-packages/shared-types/dist/
+research/raw/**
+!research/raw/**/.gitkeep
+
+research/reports/**
+!research/reports/**/.gitkeep
 
 # ------------------------------------------------------------------------------
-# Specs / compiled plans / validation output
+# Generated intermediate artifacts
 # ------------------------------------------------------------------------------
+generated/manifests/**
+!generated/manifests/.gitkeep
+
+generated/codegen/**
+!generated/codegen/.gitkeep
+
+generated/diffs/**
+!generated/diffs/.gitkeep
+
 specs/generated/**
 !specs/generated/.gitkeep
 
-# If schemas are source-of-truth, keep them. Ignore only transient validation output:
-specs/schema/**/*.compiled.*
-specs/schema/**/*.cache.*
-specs/schema/.cache/
+# ------------------------------------------------------------------------------
+# App reports
+# ------------------------------------------------------------------------------
+apps/web/reports/**
+!apps/web/reports/.gitkeep
 
-# ------------------------------------------------------------------------------
-# Agent workspace outputs
-# ------------------------------------------------------------------------------
-agents/**/.cache/
-agents/**/dist/
-agents/**/build/
-agents/**/coverage/
-agents/**/.pytest_cache/
-agents/**/.mypy_cache/
-agents/**/.ruff_cache/
+apps/api/reports/**
+!apps/api/reports/.gitkeep
 
-# Agent scratchpads / temp prompt outputs
-agents/**/tmp/
-agents/**/temp/
-agents/**/runs/
-agents/**/artifacts/
-!agents/**/.gitkeep
-
-# ------------------------------------------------------------------------------
-# Scripts / local execution outputs
-# ------------------------------------------------------------------------------
-scripts/**/.cache/
-scripts/**/tmp/
-scripts/**/temp/
+apps/desktop/reports/**
+!apps/desktop/reports/.gitkeep
 
 # ------------------------------------------------------------------------------
 # Deployment / release outputs
 # ------------------------------------------------------------------------------
-deployment/releases/manifests/**
-!deployment/releases/manifests/.gitkeep
-deployment/releases/notes/**
-!deployment/releases/notes/.gitkeep
-deployment/releases/checksums/**
-!deployment/releases/checksums/.gitkeep
+deployment/releases/**
+!deployment/releases/.gitkeep
 
-# Local environment files inside deployment folders
 deployment/environments/**/.env
 deployment/environments/**/.env.*
 !deployment/environments/**/.env.example
 !deployment/environments/**/.env.*.example
 
-# Smoke outputs
-deployment/smoke/**/*.log
+# ------------------------------------------------------------------------------
+# Docs / export artifacts
+# ------------------------------------------------------------------------------
+*.pdf
+*.pptx
+*.docx
 
 # ------------------------------------------------------------------------------
-# Preserve empty scaffolding folders with .gitkeep
+# Always allow placeholder keep files
 # ------------------------------------------------------------------------------
 !**/.gitkeep
