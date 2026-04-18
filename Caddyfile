@@ -1,4 +1,4 @@
-slides.dhruvdeora.com {
+slides.techbrig.co {
     encode zstd gzip
 
     handle_path /api/* {
