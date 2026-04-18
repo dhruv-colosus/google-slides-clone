@@ -29,8 +29,9 @@ export function usePresentations() {
   return useQuery<DeckSummary[], Error>({
     queryKey: PRESENTATIONS_QUERY_KEY,
     queryFn: listPresentations,
-    staleTime: 30_000,
-    refetchOnWindowFocus: false,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -64,9 +65,26 @@ export function useCreatePresentation() {
   return useMutation<DeckDetail, Error, { title?: string } | undefined>({
     mutationFn: (payload) =>
       createPresentation(payload?.title ?? "Untitled presentation"),
-    onSuccess: (deck) => {
+    onSuccess: async (deck) => {
       queryClient.setQueryData(presentationKey(deck.id), deck);
-      queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
+      const summary: DeckSummary = {
+        id: deck.id,
+        title: deck.title,
+        is_public: deck.is_public,
+        created_at: deck.created_at,
+        updated_at: deck.updated_at,
+        thumbnail: {
+          slide: deck.content.slides[0] ?? null,
+          page_width: deck.content.meta.pageWidth,
+          page_height: deck.content.meta.pageHeight,
+          theme_id: deck.content.meta.themeId,
+        },
+      };
+      queryClient.setQueryData<DeckSummary[] | undefined>(
+        PRESENTATIONS_QUERY_KEY,
+        (prev) => (prev ? [summary, ...prev.filter((d) => d.id !== deck.id)] : [summary]),
+      );
+      await queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
     },
   });
 }

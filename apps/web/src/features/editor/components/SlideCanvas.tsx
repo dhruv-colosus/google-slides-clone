@@ -33,6 +33,7 @@ import type {
   ImageElement,
   ShapeKind,
   SlideElement,
+  TextElement,
 } from "../model/types";
 import styles from "../editor.module.css";
 
@@ -552,6 +553,91 @@ export function SlideCanvas() {
       if (editingElementId) {
         stopEditing();
       }
+      if (tool === "text") {
+        e.preventDefault();
+        const bgRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const capturedScale = scale;
+        const toPage = (clientX: number, clientY: number) => ({
+          x: (clientX - bgRect.left) / capturedScale,
+          y: (clientY - bgRect.top) / capturedScale,
+        });
+        const start = toPage(e.clientX, e.clientY);
+        const slideId = slide.id;
+        const existingZ = slide.elements.length
+          ? Math.max(...slide.elements.map((el) => el.z))
+          : 0;
+
+        setDrawingPreview({ x: start.x, y: start.y, w: 0, h: 0, kind: "rect" });
+
+        const onMove = (ev: MouseEvent) => {
+          const cur = toPage(ev.clientX, ev.clientY);
+          setDrawingPreview({
+            x: Math.min(start.x, cur.x),
+            y: Math.min(start.y, cur.y),
+            w: Math.abs(cur.x - start.x),
+            h: Math.abs(cur.y - start.y),
+            kind: "rect",
+          });
+        };
+
+        const onUp = (ev: MouseEvent) => {
+          drawingRef.current?.cleanup();
+          drawingRef.current = null;
+          setDrawingPreview(null);
+
+          const cur = toPage(ev.clientX, ev.clientY);
+          const dx = cur.x - start.x;
+          const dy = cur.y - start.y;
+          const dragDist = Math.hypot(dx, dy);
+          const defaultW = 240;
+          const defaultH = 60;
+
+          let geom: { x: number; y: number; w: number; h: number };
+          if (dragDist < 4) {
+            geom = {
+              x: Math.max(0, Math.round(start.x - defaultW / 2)),
+              y: Math.max(0, Math.round(start.y - defaultH / 2)),
+              w: defaultW,
+              h: defaultH,
+            };
+          } else {
+            geom = {
+              x: Math.round(Math.max(0, Math.min(start.x, cur.x))),
+              y: Math.round(Math.max(0, Math.min(start.y, cur.y))),
+              w: Math.round(Math.max(40, Math.abs(dx))),
+              h: Math.round(Math.max(24, Math.abs(dy))),
+            };
+          }
+
+          const el: TextElement = {
+            id: `el-${crypto.randomUUID().slice(0, 8)}`,
+            ...geom,
+            z: existingZ + 1,
+            type: "text",
+            text: {
+              align: "left",
+              fontSize: 18,
+              color: "theme.body",
+              fontFamily: "theme.body",
+              placeholder: "Click to add text",
+            },
+          };
+
+          addElement(slideId, el);
+          setTool("select", null);
+          startEditing(el.id);
+        };
+
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+        drawingRef.current = {
+          cleanup: () => {
+            window.removeEventListener("mousemove", onMove);
+            window.removeEventListener("mouseup", onUp);
+          },
+        };
+        return;
+      }
       if (tool === "shape" || tool === "line") {
         e.preventDefault();
         const kind: ShapeKind =
@@ -680,6 +766,7 @@ export function SlideCanvas() {
       selectElements,
       editingElementId,
       stopEditing,
+      startEditing,
     ],
   );
 
@@ -709,7 +796,11 @@ export function SlideCanvas() {
             width: pageWidth * scale,
             height: pageHeight * scale,
             cursor:
-              tool === "shape" || tool === "line" ? "crosshair" : undefined,
+              tool === "shape" || tool === "line"
+                ? "crosshair"
+                : tool === "text"
+                  ? "text"
+                  : undefined,
           }}
         >
           <div
