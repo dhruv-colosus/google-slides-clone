@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, MouseEvent } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import {
   AppBar,
   Box,
@@ -136,11 +137,21 @@ function PresentationCard({
   );
 }
 
-function BlankPresentationCard() {
+
+function BlankPresentationCard({ onCreate }: { onCreate: () => void }) {
   return (
     <Box sx={{ width: 200 }}>
       <Paper
         elevation={0}
+        onClick={onCreate}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onCreate();
+          }
+        }}
         sx={{
           width: 200,
           height: 112,
@@ -158,13 +169,7 @@ function BlankPresentationCard() {
           },
         }}
       >
-        <Box
-          sx={{
-            position: "relative",
-            width: 150,
-            aspectRatio: "16 / 9",
-          }}
-        >
+        <Box sx={{ position: "relative", width: 150, aspectRatio: "16 / 9" }}>
           <Image
             src="/images/slides-blank-googlecolors.png"
             alt="Start a new presentation"
@@ -175,21 +180,14 @@ function BlankPresentationCard() {
           />
         </Box>
       </Paper>
-      <Typography
-        sx={{
-          mt: 1,
-          fontSize: 14,
-          fontWeight: 400,
-          color: TEXT_PRIMARY,
-        }}
-      >
+      <Typography sx={{ mt: 1, fontSize: 14, fontWeight: 400, color: TEXT_PRIMARY }}>
         Blank presentation
       </Typography>
     </Box>
   );
 }
 
-function NewPresentationFab({ visible }: { visible: boolean }) {
+function NewPresentationFab({ visible, onCreate }: { visible: boolean; onCreate: () => void }) {
   return (
     <Box
       sx={{
@@ -205,6 +203,7 @@ function NewPresentationFab({ visible }: { visible: boolean }) {
     >
       <Fab
         aria-label="Start a new presentation"
+        onClick={onCreate}
         sx={{
           bgcolor: "#fff",
           boxShadow: "0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15)",
@@ -217,7 +216,15 @@ function NewPresentationFab({ visible }: { visible: boolean }) {
   );
 }
 
+function generatePresentationId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID().replace(/-/g, "").slice(0, 24);
+  }
+  return Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
+}
+
 export default function DashboardPage() {
+  const router = useRouter();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [activeCardId, setActiveCardId] = useState<number | null>(null);
   const [availableOffline, setAvailableOffline] = useState(false);
@@ -254,6 +261,10 @@ export default function DashboardPage() {
   const handleMenuClose = () => {
     setMenuAnchor(null);
     setActiveCardId(null);
+  };
+
+  const handleCreatePresentation = () => {
+    router.push(`/presentation/d/${generatePresentationId()}`);
   };
 
   return (
@@ -334,9 +345,7 @@ export default function DashboardPage() {
       <Box ref={startSectionRef} sx={{ bgcolor: PAGE_GREY, py: 3 }}>
         <Box sx={{ maxWidth: "80%", mx: "auto", px: { xs: 2, md: 6 } }}>
           <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-            <Typography
-              sx={{ fontSize: 16, fontWeight: 300, color: TEXT_PRIMARY, flex: 1 }}
-            >
+            <Typography sx={{ fontSize: 16, fontWeight: 300, color: TEXT_PRIMARY, flex: 1 }}>
               Start a new presentation
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
@@ -353,7 +362,7 @@ export default function DashboardPage() {
             </Box>
           </Box>
           <Box sx={{ display: "flex", gap: 3 }}>
-            <BlankPresentationCard />
+            <BlankPresentationCard onCreate={handleCreatePresentation} />
           </Box>
         </Box>
       </Box>
@@ -433,7 +442,7 @@ export default function DashboardPage() {
         </Box>
       </Box>
 
-      <NewPresentationFab visible={showFab} />
+      <NewPresentationFab visible onCreate={handleCreatePresentation} />
 
       <Menu
         anchorEl={menuAnchor}

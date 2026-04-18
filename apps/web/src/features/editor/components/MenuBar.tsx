@@ -1,0 +1,208 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import ArrowRightRoundedIcon from "@mui/icons-material/ArrowRightRounded";
+import {
+  MENU_CONFIG,
+  isDivider,
+  type MenuItem,
+  type MenuNode,
+} from "../model/menuConfig";
+import styles from "./menuBar.module.css";
+
+type ChildOpen = { idx: number; rect: DOMRect } | null;
+
+type DropdownProps = {
+  items: MenuNode[];
+  anchorRect: DOMRect;
+  side: "bottom" | "right";
+  onClose: () => void;
+  onHoverIn?: () => void;
+  onHoverOut?: () => void;
+};
+
+function Dropdown({
+  items,
+  anchorRect,
+  side,
+  onClose,
+  onHoverIn,
+  onHoverOut,
+}: DropdownProps) {
+  const [openChild, setOpenChild] = useState<ChildOpen>(null);
+
+  if (typeof document === "undefined") return null;
+
+  const style: React.CSSProperties =
+    side === "bottom"
+      ? {
+          position: "fixed",
+          top: anchorRect.bottom,
+          left: anchorRect.left,
+        }
+      : {
+          position: "fixed",
+          top: anchorRect.top - 6,
+          left: anchorRect.right + 2,
+        };
+
+  const childItem =
+    openChild && !isDivider(items[openChild.idx])
+      ? (items[openChild.idx] as MenuItem)
+      : null;
+
+  return (
+    <>
+      {createPortal(
+        <div
+          className={styles.dropdown}
+          style={style}
+          role="menu"
+          onMouseEnter={onHoverIn}
+          onMouseLeave={onHoverOut}
+        >
+          {items.map((item, idx) => {
+            if (isDivider(item)) {
+              return <div key={`d-${idx}`} className={styles.divider} />;
+            }
+            const Icon = item.icon;
+            const hasChildren = !!item.children?.length;
+            const isOpen = openChild?.idx === idx;
+
+            return (
+              <button
+                key={`${item.label}-${idx}`}
+                type="button"
+                role="menuitem"
+                className={`${styles.item} ${isOpen ? styles.itemActive : ""}`}
+                onMouseEnter={(e) => {
+                  if (hasChildren) {
+                    setOpenChild({
+                      idx,
+                      rect: e.currentTarget.getBoundingClientRect(),
+                    });
+                  } else {
+                    setOpenChild(null);
+                  }
+                }}
+                onClick={() => {
+                  if (!hasChildren) onClose();
+                }}
+              >
+                <span className={styles.itemIcon}>
+                  {Icon ? <Icon fontSize="small" /> : null}
+                </span>
+                <span className={styles.itemLabel}>{item.label}</span>
+                {item.badge && (
+                  <span className={styles.itemBadge}>{item.badge}</span>
+                )}
+                {item.shortcut && (
+                  <span className={styles.itemShortcut}>{item.shortcut}</span>
+                )}
+                {hasChildren && (
+                  <ArrowRightRoundedIcon
+                    fontSize="small"
+                    className={styles.itemArrow}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+      {openChild && childItem?.children && (
+        <Dropdown
+          items={childItem.children}
+          anchorRect={openChild.rect}
+          side="right"
+          onClose={onClose}
+          onHoverIn={onHoverIn}
+          onHoverOut={onHoverOut}
+        />
+      )}
+    </>
+  );
+}
+
+type TopOpen = { idx: number; rect: DOMRect } | null;
+
+export function MenuBar() {
+  const [open, setOpen] = useState<TopOpen>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = () => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  const scheduleClose = () => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setOpen(null), 300);
+  };
+
+  const close = () => {
+    cancelClose();
+    setOpen(null);
+  };
+
+  return (
+    <>
+      {open && <div className={styles.backdrop} onClick={close} />}
+      <nav
+        className={styles.menuRow}
+        aria-label="Menu bar"
+        onMouseEnter={cancelClose}
+        onMouseLeave={scheduleClose}
+      >
+        {MENU_CONFIG.map((menu, idx) => {
+          const isOpen = open?.idx === idx;
+          return (
+            <button
+              key={menu.label}
+              type="button"
+              className={`${styles.topItem} ${isOpen ? styles.topItemActive : ""}`}
+              onMouseEnter={(e) => {
+                cancelClose();
+                if (open !== null) {
+                  setOpen({
+                    idx,
+                    rect: e.currentTarget.getBoundingClientRect(),
+                  });
+                }
+              }}
+              onClick={(e) => {
+                cancelClose();
+                if (isOpen) {
+                  setOpen(null);
+                } else {
+                  setOpen({
+                    idx,
+                    rect: e.currentTarget.getBoundingClientRect(),
+                  });
+                }
+              }}
+              aria-haspopup="menu"
+              aria-expanded={isOpen}
+            >
+              {menu.label}
+            </button>
+          );
+        })}
+      </nav>
+      {open && (
+        <Dropdown
+          items={MENU_CONFIG[open.idx].children}
+          anchorRect={open.rect}
+          side="bottom"
+          onClose={close}
+          onHoverIn={cancelClose}
+          onHoverOut={scheduleClose}
+        />
+      )}
+    </>
+  );
+}

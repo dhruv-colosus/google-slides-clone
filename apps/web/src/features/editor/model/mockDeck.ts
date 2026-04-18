@@ -28,7 +28,6 @@ export function createMockDeck(id: string): Deck {
             h: 130,
             z: 1,
             text: {
-              runs: [{ text: "" }],
               align: "center",
               fontSize: 48,
               placeholder: "Click to add title",
@@ -43,7 +42,6 @@ export function createMockDeck(id: string): Deck {
             h: 60,
             z: 2,
             text: {
-              runs: [{ text: "" }],
               align: "center",
               fontSize: 22,
               color: "#5f6368",

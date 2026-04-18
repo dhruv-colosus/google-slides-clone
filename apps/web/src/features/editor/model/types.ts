@@ -13,20 +13,19 @@ export type ElementType = "text" | "shape" | "image";
 
 export type ShapeKind = "rect" | "ellipse" | "line" | "arrow";
 
-export type TextRun = {
-  text: string;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-};
-
+/**
+ * Block-level defaults for a text element. Inline formatting (bold, italic,
+ * links, etc.) lives inside the element's Y.XmlFragment, accessed via the
+ * DocProvider — not in this plain schema.
+ */
 export type TextBlock = {
-  runs: TextRun[];
-  align?: "left" | "center" | "right";
+  align?: "left" | "center" | "right" | "justify";
   fontSize?: number;
   fontFamily?: string;
   color?: string;
+  lineHeight?: number;
   placeholder?: string;
+  initialHtml?: string;
 };
 
 export type BaseElement = {
@@ -54,10 +53,19 @@ export type ShapeElement = BaseElement & {
   radius?: number;
 };
 
+/**
+ * `crop` is stored as normalized fractions of the source image (0..1). A value
+ * of {x:0, y:0, w:1, h:1} (or undefined) means the full image is shown. The
+ * rendered element occupies (x, y, w, h) on the slide — the crop rectangle
+ * scales to fill it.
+ */
+export type ImageCrop = { x: number; y: number; w: number; h: number };
+
 export type ImageElement = BaseElement & {
   type: "image";
   src: string;
   alt?: string;
+  crop?: ImageCrop;
 };
 
 export type SlideElement = TextElement | ShapeElement | ImageElement;

@@ -6,6 +6,9 @@ import "../styles/globals.css";
 export const metadata: Metadata = {
   title: "Google Slides",
   description: "Collaborative presentation editor",
+  icons: {
+    icon: "/images/favicon.ico",
+  },
 };
 
 type RootLayoutProps = {
