@@ -7,6 +7,7 @@ import type { Editor } from "@tiptap/react";
 import { buildTextExtensions } from "../tiptap/extensions";
 import { useDocProvider, useActiveEditorRegistry } from "../state/EditorContext";
 import type { ElementId, SlideId, TextElement } from "../model/types";
+import { resolveColor, resolveFontFamily, type Theme } from "../themes";
 import styles from "../editor.module.css";
 
 type DataProps = {
@@ -17,6 +18,7 @@ type DataProps = {
 type TextElementEditorProps = {
   element: TextElement;
   slideId: SlideId;
+  theme: Theme;
   interactive: boolean;
   selected: boolean;
   editing: boolean;
@@ -29,6 +31,7 @@ type TextElementEditorProps = {
 export function TextElementEditor({
   element,
   slideId,
+  theme,
   interactive,
   selected,
   editing,
@@ -117,8 +120,8 @@ export function TextElementEditor({
     height: element.h,
     textAlign: align,
     fontSize: text.fontSize,
-    color: text.color ?? "#202124",
-    fontFamily: text.fontFamily,
+    color: resolveColor(text.color, theme, theme.colors.body),
+    fontFamily: resolveFontFamily(text.fontFamily, theme),
     lineHeight: text.lineHeight,
     display: "flex",
     alignItems: "center",

@@ -23,12 +23,19 @@ import type {
 import { TextElementEditor } from "./TextElementEditor";
 import { TextElementPreview } from "./TextElementPreview";
 import { computeArrow } from "../shapes/arrow-geometry";
+import {
+  getTheme,
+  resolveBackground,
+  resolveColor,
+  type Theme,
+} from "../themes";
 import styles from "../editor.module.css";
 
 type RendererProps = {
   slide: Slide;
   pageWidth: number;
   pageHeight: number;
+  themeId?: string;
   interactive?: boolean;
   selectedIds?: ElementId[];
   editingElementId?: ElementId | null;
@@ -45,6 +52,7 @@ export function SlideRenderer({
   slide,
   pageWidth,
   pageHeight,
+  themeId,
   interactive = true,
   selectedIds,
   editingElementId,
@@ -56,7 +64,8 @@ export function SlideRenderer({
   onElementContextMenu,
   onBackgroundContextMenu,
 }: RendererProps) {
-  const bg = slide.background.kind === "solid" ? slide.background.color : "#fff";
+  const theme = getTheme(themeId);
+  const { css: bg } = resolveBackground(slide.background, theme);
   const selectedSet = new Set(selectedIds ?? []);
   const hiddenSet = new Set(hiddenElementIds ?? []);
 
@@ -81,6 +90,7 @@ export function SlideRenderer({
             key={el.id}
             slideId={slide.id}
             element={el}
+            theme={theme}
             interactive={interactive}
             selected={selectedSet.has(el.id)}
             editing={editingElementId === el.id}
@@ -97,6 +107,7 @@ export function SlideRenderer({
 function ElementView({
   slideId,
   element,
+  theme,
   interactive,
   selected,
   editing,
@@ -107,6 +118,7 @@ function ElementView({
 }: {
   slideId: SlideId;
   element: SlideElement;
+  theme: Theme;
   interactive: boolean;
   selected: boolean;
   editing: boolean;
@@ -141,12 +153,15 @@ function ElementView({
       // Y.XmlFragment as the canvas editor -- dual bindings cause the canvas
       // to render blank when the user returns to a slide after editing.
       if (!interactive) {
-        return <TextElementPreview element={element} slideId={slideId} />;
+        return (
+          <TextElementPreview element={element} slideId={slideId} theme={theme} />
+        );
       }
       return (
         <TextElementEditor
           element={element}
           slideId={slideId}
+          theme={theme}
           interactive={interactive}
           selected={selected}
           editing={editing}
@@ -160,7 +175,13 @@ function ElementView({
         />
       );
     case "shape":
-      return <ShapeElementView element={element} dataProps={commonDataProps} />;
+      return (
+        <ShapeElementView
+          element={element}
+          theme={theme}
+          dataProps={commonDataProps}
+        />
+      );
     case "image":
       return (
         <ImageElementView
@@ -181,18 +202,22 @@ type DataProps = {
 
 function ShapeElementView({
   element,
+  theme,
   dataProps,
 }: {
   element: ShapeElement;
+  theme: Theme;
   dataProps: DataProps;
 }) {
   const {
     shape,
-    fill = shape === "line" || shape === "arrow" ? "transparent" : "#a8c7fa",
-    stroke = shape === "line" || shape === "arrow" ? "#3c4043" : "transparent",
+    fill: rawFill = shape === "line" || shape === "arrow" ? "transparent" : "#a8c7fa",
+    stroke: rawStroke = shape === "line" || shape === "arrow" ? "#3c4043" : "transparent",
     strokeWidth = shape === "line" || shape === "arrow" ? 2 : 0,
     radius = 0,
   } = element;
+  const fill = rawFill === "transparent" ? "transparent" : resolveColor(rawFill, theme) ?? "transparent";
+  const stroke = rawStroke === "transparent" ? "transparent" : resolveColor(rawStroke, theme) ?? "transparent";
   const common = {
     position: "absolute" as const,
     left: element.x,

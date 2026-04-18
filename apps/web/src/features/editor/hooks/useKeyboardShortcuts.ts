@@ -8,6 +8,21 @@ import {
 } from "../state/EditorContext";
 import type { SlideElement } from "../model/types";
 
+const ZOOM_STEPS = [50, 75, 100, 125, 150, 200] as const;
+
+function nextZoom(current: "fit" | number): number {
+  const c = current === "fit" ? 100 : current;
+  const next = ZOOM_STEPS.find((z) => z > c);
+  return next ?? ZOOM_STEPS[ZOOM_STEPS.length - 1];
+}
+
+function prevZoom(current: "fit" | number): number {
+  const c = current === "fit" ? 100 : current;
+  const rev = [...ZOOM_STEPS].reverse();
+  const next = rev.find((z) => z < c);
+  return next ?? ZOOM_STEPS[0];
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName;
@@ -22,7 +37,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * and cleaned up automatically, avoiding useEffect.
  */
 export function useKeyboardShortcuts() {
-  const { selection, editingElementId } = useEditorState();
+  const { selection, editingElementId, zoom, presenting } = useEditorState();
   const slide = useActiveSlide();
   const {
     undo,
@@ -34,6 +49,9 @@ export function useKeyboardShortcuts() {
     selectElements,
     setElementZ,
     stopEditing,
+    setZoom,
+    addSlide,
+    startPresenting,
   } = useEditorActions();
 
   const clipboardRef = useRef<SlideElement[]>([]);
@@ -41,6 +59,7 @@ export function useKeyboardShortcuts() {
   const handlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   handlerRef.current = (e: KeyboardEvent) => {
     const key = e.key;
+    if (presenting) return;
     if (editingElementId) {
       if (key === "Escape") {
         e.preventDefault();
@@ -51,6 +70,12 @@ export function useKeyboardShortcuts() {
     if (isEditableTarget(e.target)) return;
     const meta = e.metaKey || e.ctrlKey;
 
+    if (key === "F5" || (meta && key === "Enter")) {
+      e.preventDefault();
+      startPresenting();
+      return;
+    }
+
     if (meta && (key === "z" || key === "Z")) {
       e.preventDefault();
       if (e.shiftKey) redo();
@@ -60,6 +85,37 @@ export function useKeyboardShortcuts() {
     if (meta && (key === "y" || key === "Y")) {
       e.preventDefault();
       redo();
+      return;
+    }
+
+    if (meta && (key === "=" || key === "+")) {
+      e.preventDefault();
+      setZoom(nextZoom(zoom));
+      return;
+    }
+    if (meta && key === "-") {
+      e.preventDefault();
+      setZoom(prevZoom(zoom));
+      return;
+    }
+    if (meta && key === "0") {
+      e.preventDefault();
+      setZoom("fit");
+      return;
+    }
+
+    if (meta && (key === "m" || key === "M")) {
+      e.preventDefault();
+      addSlide();
+      return;
+    }
+
+    if (meta && (key === "a" || key === "A") && slide) {
+      e.preventDefault();
+      selectElements(
+        slide.id,
+        slide.elements.map((el) => el.id),
+      );
       return;
     }
 

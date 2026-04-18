@@ -26,6 +26,9 @@ export type TextBlock = {
   lineHeight?: number;
   placeholder?: string;
   initialHtml?: string;
+  // ProseMirror JSON projection of the Y.XmlFragment at save-time.
+  // Authoritative for persistence + static thumbnail rendering.
+  contentJson?: unknown;
 };
 
 export type BaseElement = {
@@ -72,7 +75,8 @@ export type SlideElement = TextElement | ShapeElement | ImageElement;
 
 export type SlideBackground =
   | { kind: "solid"; color: string }
-  | { kind: "image"; src: string };
+  | { kind: "image"; src: string }
+  | { kind: "theme" };
 
 export type Slide = {
   id: SlideId;

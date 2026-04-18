@@ -5,10 +5,20 @@ import { TopBar } from "./TopBar";
 import { Toolbar } from "./Toolbar";
 import { SlideSidebar } from "./SlideSidebar";
 import { SlideCanvas } from "./SlideCanvas";
+import { PresenterShell } from "./PresenterShell";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useAutoSave } from "../hooks/useAutoSave";
+import { useEditorState, useSetSaveState } from "../state/EditorContext";
 import styles from "../editor.module.css";
 
+function AutoSaveController() {
+  const setSaveState = useSetSaveState();
+  useAutoSave(setSaveState);
+  return null;
+}
+
 export function EditorShell() {
+  const { presenting } = useEditorState();
   const bindShortcuts = useKeyboardShortcuts();
   const setShellRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -19,6 +29,15 @@ export function EditorShell() {
     [bindShortcuts],
   );
 
+  if (presenting) {
+    return (
+      <>
+        <AutoSaveController />
+        <PresenterShell />
+      </>
+    );
+  }
+
   return (
     <div
       ref={setShellRef}
@@ -26,6 +45,7 @@ export function EditorShell() {
       className={styles.shell}
       style={{ outline: "none" }}
     >
+      <AutoSaveController />
       <TopBar />
       <Toolbar />
       <div className={styles.body}>

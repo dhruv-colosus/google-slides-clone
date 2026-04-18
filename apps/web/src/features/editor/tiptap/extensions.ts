@@ -21,17 +21,15 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { Placeholder } from "@tiptap/extension-placeholder";
 import { Collaboration } from "@tiptap/extension-collaboration";
 import type * as Y from "yjs";
-import type { AnyExtension } from "@tiptap/core";
+import { getSchema, type AnyExtension } from "@tiptap/core";
+import type { Schema } from "@tiptap/pm/model";
 
 export type TiptapExtensionOptions = {
   fragment: Y.XmlFragment;
   placeholder?: string;
 };
 
-export function buildTextExtensions({
-  fragment,
-  placeholder,
-}: TiptapExtensionOptions): AnyExtension[] {
+function buildSchemaExtensions(): AnyExtension[] {
   return [
     StarterKit.configure({
       undoRedo: false,
@@ -53,6 +51,15 @@ export function buildTextExtensions({
       HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
     }),
     Highlight.configure({ multicolor: true }),
+  ];
+}
+
+export function buildTextExtensions({
+  fragment,
+  placeholder,
+}: TiptapExtensionOptions): AnyExtension[] {
+  return [
+    ...buildSchemaExtensions(),
     Placeholder.configure({
       placeholder: placeholder ?? "",
       emptyEditorClass: "is-editor-empty",
@@ -61,6 +68,14 @@ export function buildTextExtensions({
       fragment,
     }),
   ];
+}
+
+let _textSchema: Schema | null = null;
+
+export function getTextSchema(): Schema {
+  if (_textSchema) return _textSchema;
+  _textSchema = getSchema(buildSchemaExtensions());
+  return _textSchema;
 }
 
 export const FONT_FAMILIES = [

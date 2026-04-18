@@ -17,6 +17,7 @@ import type {
   ImageCrop,
   ShapeKind,
   Slide,
+  SlideBackground,
   SlideElement,
   SlideId,
   TextBlock,
@@ -28,6 +29,7 @@ import {
   findSlideYMap,
   hydrateDoc,
   readDeck,
+  sanitizeTextBlock,
   slideToYMap,
   type YElement,
   type YSlide,
@@ -63,10 +65,18 @@ export interface DocProvider {
   canRedo(): boolean;
 
   renameDeck(title: string): void;
+  setDeckTheme(themeId: string): void;
   addSlide(afterSlideId?: SlideId | null): SlideId;
   deleteSlide(slideId: SlideId): void;
   duplicateSlide(slideId: SlideId): SlideId | null;
   reorderSlides(fromIndex: number, toIndex: number): void;
+
+  setSlideBackground(slideId: SlideId, bg: SlideBackground): void;
+  applyLayout(
+    slideId: SlideId,
+    layoutId: string,
+    elements: SlideElement[],
+  ): void;
 
   addElement(slideId: SlideId, el: SlideElement): void;
   updateElement(slideId: SlideId, elementId: ElementId, patch: ElementPatch): void;
@@ -91,7 +101,7 @@ function blankSlide(): Slide {
   return {
     id: newId("slide"),
     layoutId: "blank",
-    background: { kind: "solid", color: "#ffffff" },
+    background: { kind: "theme" },
     elements: [],
   };
 }
@@ -103,6 +113,10 @@ function cloneElementData(el: SlideElement): SlideElement {
 function applyElementPatch(el: YElement, patch: ElementPatch) {
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
+    if (key === "text" && value && typeof value === "object") {
+      el.set(key, sanitizeTextBlock(value as TextBlock));
+      continue;
+    }
     el.set(key, value);
   }
 }
@@ -178,6 +192,35 @@ export class InMemoryDocProvider implements DocProvider {
   renameDeck = (title: string) => {
     this.transact(() => {
       this.doc.getMap("meta").set("title", title);
+    });
+  };
+
+  setDeckTheme = (themeId: string) => {
+    this.transact(() => {
+      this.doc.getMap("meta").set("themeId", themeId);
+    });
+  };
+
+  setSlideBackground = (slideId: SlideId, bg: SlideBackground) => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return;
+    this.transact(() => {
+      slide.set("background", { ...bg });
+    });
+  };
+
+  applyLayout = (
+    slideId: SlideId,
+    layoutId: string,
+    elements: SlideElement[],
+  ) => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return;
+    const els = slide.get("elements") as Y.Array<YElement>;
+    this.transact(() => {
+      slide.set("layoutId", layoutId);
+      if (els.length) els.delete(0, els.length);
+      if (elements.length) els.insert(0, elements.map(elementToYMap));
     });
   };
 

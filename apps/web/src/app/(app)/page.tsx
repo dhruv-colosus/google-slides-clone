@@ -1,11 +1,16 @@
 "use client";
 
-import { useState, useEffect, useRef, MouseEvent } from "react";
+import { useState, useEffect, useRef, useMemo, MouseEvent } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   AppBar,
   Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   Divider,
   Fab,
   IconButton,
@@ -15,12 +20,22 @@ import {
   Menu,
   MenuItem,
   Paper,
+  Skeleton,
   Switch,
+  TextField,
   Toolbar,
   Tooltip,
   Typography,
 } from "@mui/material";
 import { UserAvatar } from "@/features/auth";
+import {
+  useCreatePresentation,
+  useDeletePresentation,
+  usePresentations,
+  useRenamePresentation,
+  type DeckSummary,
+} from "@/features/presentations";
+import { SlideThumbnail } from "@/features/editor/components/SlideThumbnail";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
@@ -44,18 +59,20 @@ const SURFACE_GREY = "#F0F4F9";
 const PAGE_GREY = "#F0F4F9";
 const BORDER_GREY = "#dadce0";
 
-const MOCK_DATES = [
-  "Jul 30, 2025", "Aug 3, 2025", "Aug 10, 2025", "Aug 14, 2025", "Aug 20, 2025",
-  "Sep 1, 2025", "Sep 8, 2025", "Sep 15, 2025", "Oct 2, 2025", "Oct 9, 2025",
-];
+const dateFormatter = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
 
-const placeholders = Array.from({ length: 10 }, (_, index) => ({
-  id: index,
-  title: "Untitled presentation",
-  opened: MOCK_DATES[index],
-}));
+function formatOpened(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return dateFormatter.format(parsed);
+}
 
-function PlaceholderThumbnail() {
+function DeckThumbnail({ deck }: { deck: DeckSummary }) {
+  const thumb = deck.thumbnail;
   return (
     <Box
       sx={{
@@ -63,25 +80,44 @@ function PlaceholderThumbnail() {
         aspectRatio: "16 / 9",
         bgcolor: "#fff",
         borderBottom: `1px solid ${BORDER_GREY}`,
+        overflow: "hidden",
       }}
-    />
+    >
+      {thumb ? (
+        <SlideThumbnail
+          slide={thumb.slide}
+          pageWidth={thumb.page_width}
+          pageHeight={thumb.page_height}
+          themeId={thumb.theme_id}
+        />
+      ) : null}
+    </Box>
   );
 }
 
 function PresentationCard({
-  title,
-  opened,
+  deck,
   highlighted,
+  onOpen,
   onMenuOpen,
 }: {
-  title: string;
-  opened: string;
+  deck: DeckSummary;
   highlighted: boolean;
+  onOpen: () => void;
   onMenuOpen: (event: MouseEvent<HTMLElement>) => void;
 }) {
   return (
     <Paper
       elevation={0}
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
       sx={{
         border: highlighted ? `2px solid ${SLIDES_YELLOW}` : `1px solid ${BORDER_GREY}`,
         borderRadius: "4px",
@@ -93,7 +129,7 @@ function PresentationCard({
         },
       }}
     >
-      <PlaceholderThumbnail />
+      <DeckThumbnail deck={deck} />
       <Box sx={{ px: 2, py: 1.25 }}>
         <Typography
           sx={{
@@ -106,7 +142,7 @@ function PresentationCard({
             mb: 0.5,
           }}
         >
-          {title}
+          {deck.title}
         </Typography>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
           <Box sx={{ width: 16, height: 16, flexShrink: 0 }}>
@@ -119,7 +155,7 @@ function PresentationCard({
           </Box>
           <PeopleRoundedIcon sx={{ fontSize: 18, color: TEXT_SECONDARY }} />
           <Typography sx={{ fontSize: 12, color: TEXT_SECONDARY, flex: 1 }}>
-            {opened}
+            {formatOpened(deck.updated_at)}
           </Typography>
           <IconButton
             size="small"
@@ -137,16 +173,44 @@ function PresentationCard({
   );
 }
 
+function PresentationCardSkeleton() {
+  return (
+    <Paper
+      elevation={0}
+      sx={{
+        border: `1px solid ${BORDER_GREY}`,
+        borderRadius: "4px",
+        overflow: "hidden",
+      }}
+    >
+      <Skeleton variant="rectangular" sx={{ width: "100%", aspectRatio: "16 / 9" }} />
+      <Box sx={{ px: 2, py: 1.25 }}>
+        <Skeleton variant="text" width="60%" sx={{ mb: 0.5 }} />
+        <Skeleton variant="text" width="40%" />
+      </Box>
+    </Paper>
+  );
+}
 
-function BlankPresentationCard({ onCreate }: { onCreate: () => void }) {
+function BlankPresentationCard({
+  onCreate,
+  disabled,
+}: {
+  onCreate: () => void;
+  disabled?: boolean;
+}) {
   return (
     <Box sx={{ width: 200 }}>
       <Paper
         elevation={0}
-        onClick={onCreate}
+        onClick={() => {
+          if (!disabled) onCreate();
+        }}
         role="button"
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
+        aria-disabled={disabled || undefined}
         onKeyDown={(e) => {
+          if (disabled) return;
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
             onCreate();
@@ -160,12 +224,15 @@ function BlankPresentationCard({ onCreate }: { onCreate: () => void }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          cursor: "pointer",
+          cursor: disabled ? "progress" : "pointer",
+          opacity: disabled ? 0.7 : 1,
           bgcolor: "#fff",
           transition: "border-color 0.15s ease, box-shadow 0.15s ease",
           "&:hover": {
-            borderColor: SLIDES_YELLOW,
-            boxShadow: "0 1px 2px rgba(60,64,67,0.2)",
+            borderColor: disabled ? "#C4C7C5" : SLIDES_YELLOW,
+            boxShadow: disabled
+              ? "none"
+              : "0 1px 2px rgba(60,64,67,0.2)",
           },
         }}
       >
@@ -187,7 +254,15 @@ function BlankPresentationCard({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function NewPresentationFab({ visible, onCreate }: { visible: boolean; onCreate: () => void }) {
+function NewPresentationFab({
+  visible,
+  disabled,
+  onCreate,
+}: {
+  visible: boolean;
+  disabled: boolean;
+  onCreate: () => void;
+}) {
   return (
     <Box
       sx={{
@@ -204,6 +279,7 @@ function NewPresentationFab({ visible, onCreate }: { visible: boolean; onCreate:
       <Fab
         aria-label="Start a new presentation"
         onClick={onCreate}
+        disabled={disabled}
         sx={{
           bgcolor: "#fff",
           boxShadow: "0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15)",
@@ -216,20 +292,19 @@ function NewPresentationFab({ visible, onCreate }: { visible: boolean; onCreate:
   );
 }
 
-function generatePresentationId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().replace(/-/g, "").slice(0, 24);
-  }
-  return Math.random().toString(36).slice(2, 14) + Date.now().toString(36);
-}
-
 export default function DashboardPage() {
   const router = useRouter();
+  const { data: presentations = [], isLoading } = usePresentations();
+  const createMutation = useCreatePresentation();
+  const deleteMutation = useDeletePresentation();
+  const renameMutation = useRenamePresentation();
+
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
-  const [activeCardId, setActiveCardId] = useState<number | null>(null);
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
   const [availableOffline, setAvailableOffline] = useState(false);
   const [showFab, setShowFab] = useState(false);
   const [appBarHeight, setAppBarHeight] = useState(68);
+  const [renameDialog, setRenameDialog] = useState<{ id: string; value: string } | null>(null);
   const startSectionRef = useRef<HTMLDivElement | null>(null);
   const appBarRef = useRef<HTMLDivElement | null>(null);
 
@@ -253,7 +328,12 @@ export default function DashboardPage() {
     return () => observer.disconnect();
   }, []);
 
-  const handleMenuOpen = (id: number) => (event: MouseEvent<HTMLElement>) => {
+  const activeDeck = useMemo(
+    () => presentations.find((d) => d.id === activeCardId) ?? null,
+    [presentations, activeCardId],
+  );
+
+  const handleMenuOpen = (id: string) => (event: MouseEvent<HTMLElement>) => {
     setMenuAnchor(event.currentTarget);
     setActiveCardId(id);
   };
@@ -263,8 +343,48 @@ export default function DashboardPage() {
     setActiveCardId(null);
   };
 
-  const handleCreatePresentation = () => {
-    router.push(`/presentation/d/${generatePresentationId()}`);
+  const handleCreatePresentation = async () => {
+    if (createMutation.isPending) return;
+    try {
+      const deck = await createMutation.mutateAsync(undefined);
+      router.push(`/presentation/d/${deck.id}`);
+    } catch {
+      // Error surfaced via mutation state; card is re-enabled automatically.
+    }
+  };
+
+  const handleOpen = (id: string) => {
+    router.push(`/presentation/d/${id}`);
+  };
+
+  const handleOpenInNewTab = () => {
+    if (!activeDeck) return;
+    window.open(`/presentation/d/${activeDeck.id}`, "_blank", "noopener,noreferrer");
+    handleMenuClose();
+  };
+
+  const handleRemove = () => {
+    if (!activeDeck) return;
+    deleteMutation.mutate(activeDeck.id);
+    handleMenuClose();
+  };
+
+  const openRenameDialog = () => {
+    if (!activeDeck) return;
+    setRenameDialog({ id: activeDeck.id, value: activeDeck.title });
+    handleMenuClose();
+  };
+
+  const confirmRename = () => {
+    if (!renameDialog) return;
+    const title = renameDialog.value.trim();
+    if (!title) return;
+    renameMutation.mutate(
+      { id: renameDialog.id, title },
+      {
+        onSettled: () => setRenameDialog(null),
+      },
+    );
   };
 
   return (
@@ -362,7 +482,10 @@ export default function DashboardPage() {
             </Box>
           </Box>
           <Box sx={{ display: "flex", gap: 3 }}>
-            <BlankPresentationCard onCreate={handleCreatePresentation} />
+            <BlankPresentationCard
+              onCreate={handleCreatePresentation}
+              disabled={createMutation.isPending}
+            />
           </Box>
         </Box>
       </Box>
@@ -417,32 +540,61 @@ export default function DashboardPage() {
 
       <Box sx={{ bgcolor: "#fff", py: 3 }}>
         <Box sx={{ maxWidth: "80%", mx: "auto", px: { xs: 2, md: 6 } }}>
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: {
-                xs: "repeat(1, 1fr)",
-                sm: "repeat(2, 1fr)",
-                md: "repeat(3, 1fr)",
-                lg: "repeat(4, 1fr)",
-              },
-              gap: 2.5,
-            }}
-          >
-            {placeholders.map((p) => (
-              <PresentationCard
-                key={p.id}
-                title={p.title}
-                opened={p.opened}
-                highlighted={activeCardId === p.id}
-                onMenuOpen={handleMenuOpen(p.id)}
-              />
-            ))}
-          </Box>
+          {isLoading ? (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "repeat(1, 1fr)",
+                  sm: "repeat(2, 1fr)",
+                  md: "repeat(3, 1fr)",
+                  lg: "repeat(4, 1fr)",
+                },
+                gap: 2.5,
+              }}
+            >
+              {Array.from({ length: 8 }).map((_, i) => (
+                <PresentationCardSkeleton key={i} />
+              ))}
+            </Box>
+          ) : presentations.length === 0 ? (
+            <Box sx={{ py: 6, textAlign: "center", color: TEXT_SECONDARY }}>
+              <Typography sx={{ fontSize: 14 }}>
+                No presentations yet. Create one to get started.
+              </Typography>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                display: "grid",
+                gridTemplateColumns: {
+                  xs: "repeat(1, 1fr)",
+                  sm: "repeat(2, 1fr)",
+                  md: "repeat(3, 1fr)",
+                  lg: "repeat(4, 1fr)",
+                },
+                gap: 2.5,
+              }}
+            >
+              {presentations.map((deck) => (
+                <PresentationCard
+                  key={deck.id}
+                  deck={deck}
+                  highlighted={activeCardId === deck.id}
+                  onOpen={() => handleOpen(deck.id)}
+                  onMenuOpen={handleMenuOpen(deck.id)}
+                />
+              ))}
+            </Box>
+          )}
         </Box>
       </Box>
 
-      <NewPresentationFab visible onCreate={handleCreatePresentation} />
+      <NewPresentationFab
+        visible={showFab}
+        disabled={createMutation.isPending}
+        onCreate={handleCreatePresentation}
+      />
 
       <Menu
         anchorEl={menuAnchor}
@@ -470,19 +622,19 @@ export default function DashboardPage() {
           },
         }}
       >
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={openRenameDialog}>
           <ListItemIcon>
             <TextFieldsRoundedIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Rename</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={handleRemove}>
           <ListItemIcon>
             <DeleteOutlineRoundedIcon fontSize="small" />
           </ListItemIcon>
           <ListItemText>Remove</ListItemText>
         </MenuItem>
-        <MenuItem onClick={handleMenuClose}>
+        <MenuItem onClick={handleOpenInNewTab}>
           <ListItemIcon>
             <OpenInNewRoundedIcon fontSize="small" />
           </ListItemIcon>
@@ -507,6 +659,45 @@ export default function DashboardPage() {
           />
         </MenuItem>
       </Menu>
+
+      <Dialog
+        open={renameDialog !== null}
+        onClose={() => setRenameDialog(null)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Rename presentation</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            fullWidth
+            margin="dense"
+            label="Title"
+            value={renameDialog?.value ?? ""}
+            onChange={(e) =>
+              setRenameDialog((prev) =>
+                prev ? { ...prev, value: e.target.value } : prev,
+              )
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                confirmRename();
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDialog(null)}>Cancel</Button>
+          <Button
+            onClick={confirmRename}
+            disabled={!renameDialog?.value.trim() || renameMutation.isPending}
+            variant="contained"
+          >
+            Rename
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

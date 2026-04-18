@@ -18,11 +18,13 @@ import type { ReactNode } from "react";
 import * as Y from "yjs";
 import { useDocProvider } from "../state/EditorContext";
 import type { SlideId, TextElement } from "../model/types";
+import { resolveColor, resolveFontFamily, type Theme } from "../themes";
 import styles from "../editor.module.css";
 
 type Props = {
   element: TextElement;
   slideId: SlideId;
+  theme: Theme;
 };
 
 function xmlTextToString(node: Y.XmlText): string {
@@ -114,7 +116,7 @@ function isFragmentEmpty(fragment: Y.XmlFragment): boolean {
   return empty;
 }
 
-export function TextElementPreview({ element, slideId }: Props) {
+export function TextElementPreview({ element, slideId, theme }: Props) {
   const provider = useDocProvider();
   const fragment = useMemo(
     () => provider.getTextFragment(slideId, element.id),
@@ -141,8 +143,8 @@ export function TextElementPreview({ element, slideId }: Props) {
     height: element.h,
     textAlign: align,
     fontSize: text.fontSize,
-    color: text.color ?? "#202124",
-    fontFamily: text.fontFamily,
+    color: resolveColor(text.color, theme, theme.colors.body),
+    fontFamily: resolveFontFamily(text.fontFamily, theme),
     lineHeight: text.lineHeight,
     display: "flex",
     alignItems: "center",
@@ -170,7 +172,9 @@ export function TextElementPreview({ element, slideId }: Props) {
       <div className={styles.tiptapWrap}>
         <div className={styles.tiptapContent}>
           {empty ? (
-            <span style={{ color: "#9aa0a6" }}>{text.placeholder ?? ""}</span>
+            <span style={{ color: "currentColor", opacity: 0.55 }}>
+              {text.placeholder ?? ""}
+            </span>
           ) : (
             renderNode(fragment as Y.XmlFragment, 0)
           )}

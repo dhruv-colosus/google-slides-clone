@@ -34,6 +34,7 @@ function SortableThumbnail({
   active,
   pageWidth,
   pageHeight,
+  themeId,
   onSelect,
   onOpenMenu,
 }: {
@@ -42,6 +43,7 @@ function SortableThumbnail({
   active: boolean;
   pageWidth: number;
   pageHeight: number;
+  themeId: string;
   onSelect: () => void;
   onOpenMenu: (slideId: SlideId, x: number, y: number) => void;
 }) {
@@ -99,6 +101,7 @@ function SortableThumbnail({
             slide={slide}
             pageWidth={pageWidth}
             pageHeight={pageHeight}
+            themeId={themeId}
             interactive={false}
           />
         </div>
@@ -242,6 +245,7 @@ export function SlideSidebar() {
                 active={active?.id === slide.id}
                 pageWidth={deck.meta.pageWidth}
                 pageHeight={deck.meta.pageHeight}
+                themeId={deck.meta.themeId}
                 onSelect={() => selectSlide(slide.id)}
                 onOpenMenu={openMenu}
               />

@@ -725,6 +725,7 @@ export function SlideCanvas() {
               slide={slide}
               pageWidth={pageWidth}
               pageHeight={pageHeight}
+              themeId={deck.meta.themeId}
               selectedIds={selectedIds}
               editingElementId={editingElementId}
               hiddenElementIds={croppingElementId ? [croppingElementId] : undefined}

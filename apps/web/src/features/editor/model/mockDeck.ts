@@ -17,7 +17,7 @@ export function createMockDeck(id: string): Deck {
       {
         id: "slide-1",
         layoutId: "title",
-        background: { kind: "solid", color: "#ffffff" },
+        background: { kind: "theme" },
         elements: [
           {
             id: "el-title",

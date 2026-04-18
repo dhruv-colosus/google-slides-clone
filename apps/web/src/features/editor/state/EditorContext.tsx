@@ -27,21 +27,24 @@ import type {
   Deck,
   ElementId,
   ShapeKind,
+  SlideBackground,
   SlideElement,
   SlideId,
   TextBlock,
   ToolMode,
   Selection,
 } from "../model/types";
+import { getTheme, type Theme } from "../themes";
 import {
   InMemoryDocProvider,
   type DocProvider,
   type ElementPatch,
   type ZDirection,
 } from "../yjs/provider";
-import { createMockDeck } from "../model/mockDeck";
 
 export type ZoomMode = "fit" | number;
+
+export type PresenterBlank = "none" | "white" | "black";
 
 export type UiState = {
   selection: Selection;
@@ -51,6 +54,8 @@ export type UiState = {
   editingElementId: ElementId | null;
   croppingElementId: ElementId | null;
   saveState: "idle" | "saving" | "saved" | "offline";
+  presenting: boolean;
+  presenterBlank: PresenterBlank;
 };
 
 export type EditorState = UiState & { deck: Deck };
@@ -65,7 +70,10 @@ type UiAction =
   | { type: "stopEditing" }
   | { type: "startCropping"; elementId: ElementId }
   | { type: "stopCropping" }
-  | { type: "setSaveState"; state: UiState["saveState"] };
+  | { type: "setSaveState"; state: UiState["saveState"] }
+  | { type: "startPresenting"; slideId?: SlideId }
+  | { type: "stopPresenting" }
+  | { type: "setPresenterBlank"; mode: PresenterBlank };
 
 function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -139,12 +147,28 @@ function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, croppingElementId: null };
     case "setSaveState":
       return { ...state, saveState: action.state };
+    case "startPresenting":
+      return {
+        ...state,
+        presenting: true,
+        presenterBlank: "none",
+        editingElementId: null,
+        croppingElementId: null,
+        selection: action.slideId
+          ? { slideId: action.slideId, elementIds: [] }
+          : { ...state.selection, elementIds: [] },
+      };
+    case "stopPresenting":
+      return { ...state, presenting: false, presenterBlank: "none" };
+    case "setPresenterBlank":
+      return { ...state, presenterBlank: action.mode };
     default:
       return state;
   }
 }
 
 type EditorContextValue = {
+  deckId: string;
   ui: UiState;
   uiDispatch: Dispatch<UiAction>;
   provider: DocProvider;
@@ -157,20 +181,22 @@ const EditorContext = createContext<EditorContextValue | null>(null);
 
 export function EditorProvider({
   deckId,
+  initialDeck,
   children,
 }: {
   deckId: string;
+  initialDeck: Deck;
   children: ReactNode;
 }) {
   const [provider, setProvider] = useState<DocProvider>(
-    () => new InMemoryDocProvider(createMockDeck(deckId)),
+    () => new InMemoryDocProvider(initialDeck),
   );
 
   const lastDeckIdRef = useRef(deckId);
   if (lastDeckIdRef.current !== deckId) {
     lastDeckIdRef.current = deckId;
     provider.destroy();
-    setProvider(new InMemoryDocProvider(createMockDeck(deckId)));
+    setProvider(new InMemoryDocProvider(initialDeck));
   }
 
   const destroyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -194,6 +220,8 @@ export function EditorProvider({
     editingElementId: null,
     croppingElementId: null,
     saveState: "idle" as const,
+    presenting: false,
+    presenterBlank: "none" as const,
   }));
 
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
@@ -221,6 +249,7 @@ export function EditorProvider({
 
   const value = useMemo(
     () => ({
+      deckId,
       ui,
       uiDispatch,
       provider,
@@ -228,9 +257,22 @@ export function EditorProvider({
       setActiveEditorFor,
       clearActiveEditor,
     }),
-    [ui, provider, activeEditor, setActiveEditorFor, clearActiveEditor],
+    [deckId, ui, provider, activeEditor, setActiveEditorFor, clearActiveEditor],
   );
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
+}
+
+export function useEditorDeckId(): string {
+  return useEditor().deckId;
+}
+
+export function useSetSaveState() {
+  const { uiDispatch } = useEditor();
+  return useCallback(
+    (state: UiState["saveState"]) =>
+      uiDispatch({ type: "setSaveState", state }),
+    [uiDispatch],
+  );
 }
 
 function useEditor() {
@@ -259,6 +301,11 @@ export function useActiveSlide() {
   const deck = useDeck();
   const { ui } = useEditor();
   return deck.slides.find((s) => s.id === ui.selection.slideId) ?? deck.slides[0] ?? null;
+}
+
+export function useActiveTheme(): Theme {
+  const deck = useDeck();
+  return getTheme(deck.meta.themeId);
 }
 
 export function useUndoState() {
@@ -309,6 +356,25 @@ export function useEditorActions() {
   const renameDeck = useCallback(
     (title: string) => provider.renameDeck(title),
     [provider],
+  );
+
+  const setDeckTheme = useCallback(
+    (themeId: string) => provider.setDeckTheme(themeId),
+    [provider],
+  );
+
+  const setSlideBackground = useCallback(
+    (slideId: SlideId, bg: SlideBackground) =>
+      provider.setSlideBackground(slideId, bg),
+    [provider],
+  );
+
+  const applyLayout = useCallback(
+    (slideId: SlideId, layoutId: string, elements: SlideElement[]) => {
+      provider.applyLayout(slideId, layoutId, elements);
+      uiDispatch({ type: "select", slideId, elementIds: [] });
+    },
+    [provider, uiDispatch],
   );
 
   const addSlide = useCallback(() => {
@@ -408,6 +474,19 @@ export function useEditorActions() {
     [uiDispatch],
   );
 
+  const startPresenting = useCallback(
+    (slideId?: SlideId) => uiDispatch({ type: "startPresenting", slideId }),
+    [uiDispatch],
+  );
+  const stopPresenting = useCallback(
+    () => uiDispatch({ type: "stopPresenting" }),
+    [uiDispatch],
+  );
+  const setPresenterBlank = useCallback(
+    (mode: PresenterBlank) => uiDispatch({ type: "setPresenterBlank", mode }),
+    [uiDispatch],
+  );
+
   const updateTextBlock = useCallback(
     (slideId: SlideId, elementId: ElementId, partial: Partial<TextBlock>) => {
       const deck = provider.readDeck();
@@ -428,6 +507,9 @@ export function useEditorActions() {
     setPendingShapeKind,
     setZoom,
     renameDeck,
+    setDeckTheme,
+    setSlideBackground,
+    applyLayout,
     addSlide,
     deleteSlide,
     duplicateSlide,
@@ -444,6 +526,9 @@ export function useEditorActions() {
     stopEditing,
     startCropping,
     stopCropping,
+    startPresenting,
+    stopPresenting,
+    setPresenterBlank,
     updateTextBlock,
   };
 }

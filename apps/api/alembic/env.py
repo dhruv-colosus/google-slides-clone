@@ -9,6 +9,7 @@ from app.db.base import Base
 
 # Import all models so Alembic sees them in metadata.
 from app.auth.models import User  # noqa: F401
+from app.presentations.models import Deck  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

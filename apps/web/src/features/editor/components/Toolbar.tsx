@@ -36,6 +36,9 @@ import { TextFormatPanel } from "./TextFormatPanel";
 import { ShapeFormatPanel } from "./ShapeFormatPanel";
 import { ImageFormatPanel } from "./ImageFormatPanel";
 import { SelectionCommandsPanel } from "./SelectionCommandsPanel";
+import { BackgroundPanel } from "./BackgroundPanel";
+import { LayoutPicker } from "./LayoutPicker";
+import { ThemePicker } from "./ThemePicker";
 import { Dropdown } from "./FormatPanelPrimitives";
 import { useInsertImage } from "../hooks/useInsertImage";
 import styles from "../editor.module.css";
@@ -292,13 +295,13 @@ export function Toolbar() {
           <SelectionCommandsPanel selectedIds={selectedIds} />
         ) : (
           <>
-            <button className={styles.toolbarButton}>Background</button>
+            <BackgroundPanel />
             <span className={styles.toolbarDivider} />
 
-            <button className={styles.toolbarButton}>Layout</button>
+            <LayoutPicker />
             <span className={styles.toolbarDivider} />
 
-            <button className={styles.toolbarButton}>Theme</button>
+            <ThemePicker />
             <span className={styles.toolbarDivider} />
 
             <button className={styles.toolbarButton}>Transition</button>

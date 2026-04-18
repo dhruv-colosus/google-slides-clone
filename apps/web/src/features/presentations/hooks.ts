@@ -1,0 +1,129 @@
+"use client";
+
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+
+import {
+  createPresentation,
+  deletePresentation,
+  getPresentation,
+  getPublicPresentation,
+  listPresentations,
+  renamePresentation,
+  savePresentation,
+  setPresentationVisibility,
+} from "./api";
+import type { DeckDetail, DeckSummary } from "./types";
+import type { Deck } from "@/features/editor/model/types";
+
+export const PRESENTATIONS_QUERY_KEY = ["presentations"] as const;
+export const presentationKey = (id: string) =>
+  ["presentations", id] as const;
+export const publicPresentationKey = (id: string) =>
+  ["presentations", "public", id] as const;
+
+export function usePresentations() {
+  return useQuery<DeckSummary[], Error>({
+    queryKey: PRESENTATIONS_QUERY_KEY,
+    queryFn: listPresentations,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function usePresentation(id: string | undefined) {
+  return useQuery<DeckDetail, Error>({
+    queryKey: presentationKey(id ?? ""),
+    queryFn: () => getPresentation(id as string),
+    enabled: !!id,
+    staleTime: Infinity,
+    gcTime: 10 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function usePublicPresentation(id: string | undefined) {
+  return useQuery<DeckDetail, Error>({
+    queryKey: publicPresentationKey(id ?? ""),
+    queryFn: () => getPublicPresentation(id as string),
+    enabled: !!id,
+    staleTime: Infinity,
+    gcTime: 10 * 60_000,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCreatePresentation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<DeckDetail, Error, { title?: string } | undefined>({
+    mutationFn: (payload) =>
+      createPresentation(payload?.title ?? "Untitled presentation"),
+    onSuccess: (deck) => {
+      queryClient.setQueryData(presentationKey(deck.id), deck);
+      queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
+    },
+  });
+}
+
+export function useSavePresentation(id: string) {
+  return useMutation<
+    DeckDetail,
+    Error,
+    { content: Deck; title: string }
+  >({
+    mutationFn: ({ content, title }) =>
+      savePresentation(id, content, title),
+  });
+}
+
+export function useRenamePresentation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<DeckSummary, Error, { id: string; title: string }>({
+    mutationFn: ({ id, title }) => renamePresentation(id, title),
+    onSuccess: (summary) => {
+      queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
+      queryClient.setQueryData<DeckDetail | undefined>(
+        presentationKey(summary.id),
+        (prev) =>
+          prev
+            ? { ...prev, title: summary.title, updated_at: summary.updated_at }
+            : prev,
+      );
+    },
+  });
+}
+
+export function useSetVisibility(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<DeckSummary, Error, boolean>({
+    mutationFn: (isPublic) => setPresentationVisibility(id, isPublic),
+    onSuccess: (summary) => {
+      queryClient.setQueryData<DeckDetail | undefined>(
+        presentationKey(id),
+        (prev) =>
+          prev ? { ...prev, is_public: summary.is_public, updated_at: summary.updated_at } : prev,
+      );
+      queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
+    },
+  });
+}
+
+export function useDeletePresentation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string>({
+    mutationFn: (id) => deletePresentation(id),
+    onSuccess: (_data, id) => {
+      queryClient.removeQueries({ queryKey: presentationKey(id) });
+      queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
+    },
+  });
+}

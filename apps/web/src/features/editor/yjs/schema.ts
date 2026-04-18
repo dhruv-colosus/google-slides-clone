@@ -13,6 +13,11 @@
  */
 
 import * as Y from "yjs";
+import {
+  prosemirrorJSONToYXmlFragment,
+  yXmlFragmentToProsemirrorJSON,
+} from "y-prosemirror";
+import { getTextSchema } from "../tiptap/extensions";
 import type {
   BaseElement,
   Deck,
@@ -23,11 +28,19 @@ import type {
   ShapeElement,
   Slide,
   SlideElement,
+  TextBlock,
   TextElement,
 } from "../model/types";
 
 export type YSlide = Y.Map<unknown>;
 export type YElement = Y.Map<unknown>;
+
+export function sanitizeTextBlock(text: TextBlock): TextBlock {
+  // `contentJson` is a derived projection of the Y.XmlFragment; the fragment
+  // is authoritative, so we must never write it back into the Y.Map.
+  const { contentJson: _drop, ...rest } = text;
+  return rest;
+}
 
 function elementToYMap(el: SlideElement): YElement {
   const m = new Y.Map<unknown>();
@@ -41,7 +54,7 @@ function elementToYMap(el: SlideElement): YElement {
   if (el.rotation !== undefined) m.set("rotation", el.rotation);
   if (el.locked !== undefined) m.set("locked", el.locked);
   if (el.type === "text") {
-    m.set("text", { ...el.text });
+    m.set("text", sanitizeTextBlock(el.text));
     m.set("doc", new Y.XmlFragment());
   } else if (el.type === "shape") {
     m.set("shape", el.shape);
@@ -81,6 +94,31 @@ export function hydrateDoc(doc: Y.Doc, deck: Deck) {
     meta.set("schemaVersion", deck.meta.schemaVersion);
     if (slides.length) slides.delete(0, slides.length);
     slides.insert(0, deck.slides.map(slideToYMap));
+
+    // Second pass: now that every YMap/YArray is attached to the doc, populate
+    // each text element's Y.XmlFragment from its persisted ProseMirror JSON.
+    // This restores inline formatting, marks, and typed text after reload.
+    let schema: ReturnType<typeof getTextSchema> | null = null;
+    for (let i = 0; i < deck.slides.length; i++) {
+      const slideElements = deck.slides[i].elements;
+      const ySlide = slides.get(i);
+      const yEls = ySlide.get("elements") as Y.Array<YElement>;
+      for (let j = 0; j < slideElements.length; j++) {
+        const el = slideElements[j];
+        if (el.type !== "text") continue;
+        const contentJson = el.text.contentJson;
+        if (!contentJson || typeof contentJson !== "object") continue;
+        const yEl = yEls.get(j);
+        const fragment = yEl.get("doc");
+        if (!(fragment instanceof Y.XmlFragment)) continue;
+        try {
+          if (!schema) schema = getTextSchema();
+          prosemirrorJSONToYXmlFragment(schema, contentJson, fragment);
+        } catch (err) {
+          console.warn("[hydrateDoc] failed to hydrate text fragment", err);
+        }
+      }
+    }
   }, "hydrate");
 }
 
@@ -97,11 +135,16 @@ function readElement(m: YElement): SlideElement {
     locked: m.get("locked") as boolean | undefined,
   };
   if (type === "text") {
-    const el: TextElement = {
-      ...base,
-      type,
-      text: { ...(m.get("text") as TextElement["text"]) },
-    };
+    const text = { ...(m.get("text") as TextElement["text"]) };
+    const fragment = m.get("doc");
+    if (fragment instanceof Y.XmlFragment) {
+      try {
+        text.contentJson = yXmlFragmentToProsemirrorJSON(fragment);
+      } catch {
+        // fragment serialization failed — leave contentJson undefined
+      }
+    }
+    const el: TextElement = { ...base, type, text };
     return el;
   }
   if (type === "shape") {
