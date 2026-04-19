@@ -16,7 +16,14 @@ export type DeckSummary = {
   thumbnail?: DeckThumbnail | null;
 };
 
+export type Collaborator = {
+  email: string;
+  role: "viewer" | "editor";
+  created_at: string;
+};
+
 export type DeckDetail = Omit<DeckSummary, "thumbnail"> & {
   owner_id: number;
   content: Deck;
+  collaborators: Collaborator[];
 };

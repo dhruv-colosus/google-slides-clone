@@ -7,16 +7,18 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  addCollaborator,
   createPresentation,
   deletePresentation,
   getPresentation,
   getPublicPresentation,
   listPresentations,
+  removeCollaborator,
   renamePresentation,
   savePresentation,
   setPresentationVisibility,
 } from "./api";
-import type { DeckDetail, DeckSummary } from "./types";
+import type { Collaborator, DeckDetail, DeckSummary } from "./types";
 import type { Deck } from "@/features/editor/model/types";
 
 export const PRESENTATIONS_QUERY_KEY = ["presentations"] as const;
@@ -130,6 +132,53 @@ export function useSetVisibility(id: string) {
           prev ? { ...prev, is_public: summary.is_public, updated_at: summary.updated_at } : prev,
       );
       queryClient.invalidateQueries({ queryKey: PRESENTATIONS_QUERY_KEY });
+    },
+  });
+}
+
+export function useAddCollaborator(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    Collaborator,
+    Error,
+    { email: string; role?: Collaborator["role"] }
+  >({
+    mutationFn: ({ email, role = "viewer" }) =>
+      addCollaborator(id, email, role),
+    onSuccess: (collab) => {
+      queryClient.setQueryData<DeckDetail | undefined>(
+        presentationKey(id),
+        (prev) => {
+          if (!prev) return prev;
+          const rest = prev.collaborators.filter(
+            (c) => c.email.toLowerCase() !== collab.email.toLowerCase(),
+          );
+          return { ...prev, collaborators: [...rest, collab] };
+        },
+      );
+    },
+  });
+}
+
+export function useRemoveCollaborator(id: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string>({
+    mutationFn: (email) => removeCollaborator(id, email),
+    onSuccess: (_data, email) => {
+      queryClient.setQueryData<DeckDetail | undefined>(
+        presentationKey(id),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                collaborators: prev.collaborators.filter(
+                  (c) => c.email.toLowerCase() !== email.toLowerCase(),
+                ),
+              }
+            : prev,
+      );
     },
   });
 }

@@ -12,6 +12,8 @@ import * as Y from "yjs";
 import { ySyncPluginKey } from "y-prosemirror";
 import type {
   BaseElement,
+  Comment,
+  CommentId,
   Deck,
   ElementId,
   ImageCrop,
@@ -23,19 +25,25 @@ import type {
   TextBlock,
 } from "../model/types";
 import {
+  commentToYMap,
   elementToYMap,
+  findCommentIndex,
+  findCommentYMap,
   findElementYMap,
   findSlideIndex,
   findSlideYMap,
   hydrateDoc,
+  populateTextFragmentFromJson,
   readDeck,
   sanitizeTextBlock,
   slideToYMap,
+  type YComment,
   type YElement,
   type YSlide,
 } from "./schema";
 
 export const LOCAL_ORIGIN = "local";
+export const COMMENTS_ORIGIN = "comments";
 
 export type ElementPatch = Partial<BaseElement> & {
   fill?: string;
@@ -67,6 +75,7 @@ export interface DocProvider {
   renameDeck(title: string): void;
   setDeckTheme(themeId: string): void;
   addSlide(afterSlideId?: SlideId | null): SlideId;
+  insertSlides(slides: Slide[], afterSlideId?: SlideId | null): SlideId[];
   deleteSlide(slideId: SlideId): void;
   duplicateSlide(slideId: SlideId): SlideId | null;
   reorderSlides(fromIndex: number, toIndex: number): void;
@@ -89,6 +98,18 @@ export interface DocProvider {
   setElementZ(slideId: SlideId, elementId: ElementId, direction: ZDirection): void;
 
   getTextFragment(slideId: SlideId, elementId: ElementId): Y.XmlFragment | null;
+
+  addComment(input: {
+    slideId: SlideId;
+    authorId: string;
+    authorName: string;
+    authorPicture: string | null;
+    text: string;
+  }): CommentId;
+  updateCommentText(commentId: CommentId, text: string): void;
+  deleteComment(commentId: CommentId): void;
+  resolveComment(commentId: CommentId, byName: string): void;
+  unresolveComment(commentId: CommentId): void;
 
   destroy(): void;
 }
@@ -239,6 +260,49 @@ export class InMemoryDocProvider implements DocProvider {
     return fresh.id;
   };
 
+  insertSlides = (
+    incoming: Slide[],
+    afterSlideId?: SlideId | null,
+  ): SlideId[] => {
+    if (!incoming.length) return [];
+    const slides = this.doc.getArray<YSlide>("slides");
+    // Generate fresh ids so imported content can't collide with existing ids.
+    const renamed: Slide[] = incoming.map((s) => ({
+      ...s,
+      id: newId("slide"),
+      elements: s.elements.map((e) => ({ ...e, id: newId("el") })),
+    }));
+    const newIds = renamed.map((s) => s.id);
+
+    this.transact(() => {
+      let insertAt = slides.length;
+      if (afterSlideId) {
+        const idx = findSlideIndex(this.doc, afterSlideId);
+        if (idx !== -1) insertAt = idx + 1;
+      }
+      // Pass 1: build and attach slide Y.Maps.
+      const yMaps = renamed.map(slideToYMap);
+      slides.insert(insertAt, yMaps);
+      // Pass 2: populate text Y.XmlFragments now that each Y.Map is attached
+      // to the doc (same two-pass as hydrateDoc — attaching a populated
+      // fragment to a detached map loses the content).
+      for (let i = 0; i < renamed.length; i++) {
+        const source = renamed[i];
+        const ySlide = slides.get(insertAt + i);
+        const yEls = ySlide.get("elements") as Y.Array<YElement>;
+        for (let j = 0; j < source.elements.length; j++) {
+          const el = source.elements[j];
+          if (el.type !== "text") continue;
+          const content = el.text.contentJson;
+          if (!content) continue;
+          populateTextFragmentFromJson(yEls.get(j), content);
+        }
+      }
+    });
+
+    return newIds;
+  };
+
   deleteSlide = (slideId: SlideId) => {
     const slides = this.doc.getArray<YSlide>("slides");
     if (slides.length <= 1) return;
@@ -297,7 +361,11 @@ export class InMemoryDocProvider implements DocProvider {
     if (!slide) return;
     const els = slide.get("elements") as Y.Array<YElement>;
     this.transact(() => {
-      els.push([elementToYMap(el)]);
+      const yEl = elementToYMap(el);
+      els.push([yEl]);
+      if (el.type === "text" && el.text.contentJson) {
+        populateTextFragmentFromJson(yEl, el.text.contentJson);
+      }
     });
   };
 
@@ -354,7 +422,11 @@ export class InMemoryDocProvider implements DocProvider {
     };
     const els = slide.get("elements") as Y.Array<YElement>;
     this.transact(() => {
-      els.push([elementToYMap(copy)]);
+      const yEl = elementToYMap(copy);
+      els.push([yEl]);
+      if (copy.type === "text" && copy.text.contentJson) {
+        populateTextFragmentFromJson(yEl, copy.text.contentJson);
+      }
     });
     return copy.id;
   };
@@ -399,6 +471,74 @@ export class InMemoryDocProvider implements DocProvider {
           lower.el.set("z", target.z);
         }
       }
+    });
+  };
+
+  private commentsTransact(fn: () => void) {
+    // Comments bypass the UndoManager — undo should not unpost a comment.
+    this.doc.transact(fn, COMMENTS_ORIGIN);
+  }
+
+  addComment = (input: {
+    slideId: SlideId;
+    authorId: string;
+    authorName: string;
+    authorPicture: string | null;
+    text: string;
+  }): CommentId => {
+    const id = newId("cmt");
+    const comment: Comment = {
+      id,
+      slideId: input.slideId,
+      authorId: input.authorId,
+      authorName: input.authorName,
+      authorPicture: input.authorPicture,
+      text: input.text,
+      createdAt: Date.now(),
+      updatedAt: null,
+      resolvedAt: null,
+      resolvedByName: null,
+    };
+    const arr = this.doc.getArray<YComment>("comments");
+    this.commentsTransact(() => {
+      arr.push([commentToYMap(comment)]);
+    });
+    return id;
+  };
+
+  updateCommentText = (commentId: CommentId, text: string) => {
+    const c = findCommentYMap(this.doc, commentId);
+    if (!c) return;
+    this.commentsTransact(() => {
+      c.set("text", text);
+      c.set("updatedAt", Date.now());
+    });
+  };
+
+  deleteComment = (commentId: CommentId) => {
+    const idx = findCommentIndex(this.doc, commentId);
+    if (idx === -1) return;
+    const arr = this.doc.getArray<YComment>("comments");
+    this.commentsTransact(() => {
+      arr.delete(idx, 1);
+    });
+  };
+
+  resolveComment = (commentId: CommentId, byName: string) => {
+    const c = findCommentYMap(this.doc, commentId);
+    if (!c) return;
+    this.commentsTransact(() => {
+      c.set("resolvedAt", Date.now());
+      c.set("resolvedByName", byName);
+    });
+  };
+
+  unresolveComment = (commentId: CommentId) => {
+    const c = findCommentYMap(this.doc, commentId);
+    if (!c) return;
+    this.commentsTransact(() => {
+      c.set("resolvedAt", null);
+      c.set("resolvedByName", null);
     });
   };
 

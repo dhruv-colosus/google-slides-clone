@@ -35,6 +35,11 @@ import type {
   SlideElement,
   TextElement,
 } from "../model/types";
+import {
+  CommentComposerPopup,
+  SlideCommentsRail,
+} from "../comments";
+import commentStyles from "../comments/comments.module.css";
 import styles from "../editor.module.css";
 
 const RULER_THICKNESS = 20;
@@ -42,6 +47,9 @@ const UNITS = 10;
 // Right reserved space for the floating right rail. Must match the
 // padding-right values on .canvasArea / .canvasScroll in editor.module.css.
 const RIGHT_RAIL_RESERVE = 72;
+// Extra right reserve when the comment composer is open so the 320px
+// popup + gap fits without overflow and the slide visibly shifts left.
+const COMMENT_COMPOSER_RESERVE = 360;
 
 type RulerProps = {
   orientation: "horizontal" | "vertical";
@@ -50,6 +58,7 @@ type RulerProps = {
   scale: number;
   viewportSize: number;
   offset: number;
+  rightReserve?: number;
 };
 
 function Ruler({
@@ -59,6 +68,7 @@ function Ruler({
   scale,
   viewportSize,
   offset,
+  rightReserve = RIGHT_RAIL_RESERVE,
 }: RulerProps) {
   const isH = orientation === "horizontal";
   const labels = Array.from({ length: UNITS - 1 }, (_, i) => i + 1);
@@ -73,7 +83,7 @@ function Ruler({
         position: "absolute",
         top: 0,
         left: offset,
-        right: RIGHT_RAIL_RESERVE,
+        right: rightReserve,
         height: RULER_THICKNESS,
         background: "#f9fafd",
         zIndex: 3,
@@ -253,6 +263,9 @@ export function SlideCanvas() {
     pendingShapeKind,
     editingElementId,
     croppingElementId,
+    commentComposer,
+    commentsPanelOpen,
+    readOnly,
   } = useEditorState();
   const slide = useActiveSlide();
   const {
@@ -304,11 +317,22 @@ export function SlideCanvas() {
     { addElement, updateElement, deleteElement, setElementZ, selectElements },
   );
 
+  const isComposingHere =
+    !!slide && commentComposer?.slideId === slide.id;
+  const slideHasUnresolvedComments =
+    !!slide &&
+    !!deck.comments?.some((c) => c.slideId === slide.id && !c.resolvedAt);
+  const showCanvasComments = !commentsPanelOpen;
+  const needsCommentReserve =
+    isComposingHere || (showCanvasComments && slideHasUnresolvedComments);
+  const composerReserve = needsCommentReserve ? COMMENT_COMPOSER_RESERVE : 0;
+
   useLayoutEffect(() => {
     function compute() {
       const el = areaRef.current;
       if (!el) return;
-      const availableW = el.clientWidth - RULER_THICKNESS - 64;
+      const availableW =
+        el.clientWidth - RULER_THICKNESS - 64 - composerReserve;
       const availableH = el.clientHeight - RULER_THICKNESS - 64;
       const s = Math.min(availableW / pageWidth, availableH / pageHeight, 1.5);
       setFitScale(Math.max(0.2, s));
@@ -317,7 +341,7 @@ export function SlideCanvas() {
     const ro = new ResizeObserver(compute);
     if (areaRef.current) ro.observe(areaRef.current);
     return () => ro.disconnect();
-  }, [pageWidth, pageHeight]);
+  }, [pageWidth, pageHeight, composerReserve]);
 
   const scale = zoom === "fit" ? fitScale : zoom / 100;
 
@@ -526,6 +550,7 @@ export function SlideCanvas() {
   // text/HTML paste inside a text box. Images pasted outside editing go to
   // the slide canvas.
   useEffect(() => {
+    if (readOnly) return;
     const onPaste = (e: ClipboardEvent) => {
       if (editingElementId) return;
       if (!e.clipboardData) return;
@@ -545,7 +570,7 @@ export function SlideCanvas() {
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-  }, [editingElementId, insertImage]);
+  }, [editingElementId, insertImage, readOnly]);
 
   const handleBackgroundMouseDown = useCallback(
     (e: ReactMouseEvent) => {
@@ -784,14 +809,31 @@ export function SlideCanvas() {
     <div
       ref={areaRef}
       className={styles.canvasArea}
-      onDragOver={handleCanvasDragOver}
-      onDrop={handleCanvasDrop}
+      onDragOver={readOnly ? undefined : handleCanvasDragOver}
+      onDrop={readOnly ? undefined : handleCanvasDrop}
+      style={
+        composerReserve
+          ? { paddingRight: RIGHT_RAIL_RESERVE + composerReserve }
+          : undefined
+      }
     >
-      <div ref={scrollRef} className={styles.canvasScroll}>
+      <div
+        ref={scrollRef}
+        className={styles.canvasScroll}
+        style={
+          composerReserve
+            ? { right: RIGHT_RAIL_RESERVE + composerReserve }
+            : undefined
+        }
+      >
       <div className={styles.canvasInner}>
         <div
           ref={setSlideEl}
-          className={styles.slide}
+          className={`${styles.slide}${
+            slide && commentComposer?.slideId === slide.id
+              ? ` ${commentStyles.slideCommentingOutline}`
+              : ""
+          }`}
           style={{
             width: pageWidth * scale,
             height: pageHeight * scale,
@@ -817,14 +859,18 @@ export function SlideCanvas() {
               pageWidth={pageWidth}
               pageHeight={pageHeight}
               themeId={deck.meta.themeId}
-              selectedIds={selectedIds}
+              selectedIds={readOnly ? [] : selectedIds}
               editingElementId={editingElementId}
               hiddenElementIds={croppingElementId ? [croppingElementId] : undefined}
-              onElementMouseDown={handleElementMouseDown}
-              onBackgroundMouseDown={handleBackgroundMouseDown}
-              onStartEditing={startEditing}
-              onImageDoubleClick={handleImageDoubleClick}
-              onElementContextMenu={handleElementContextMenu}
+              onElementMouseDown={readOnly ? undefined : handleElementMouseDown}
+              onBackgroundMouseDown={
+                readOnly ? undefined : handleBackgroundMouseDown
+              }
+              onStartEditing={readOnly ? undefined : startEditing}
+              onImageDoubleClick={readOnly ? undefined : handleImageDoubleClick}
+              onElementContextMenu={
+                readOnly ? undefined : handleElementContextMenu
+              }
             />
           ) : null}
           {croppingElement ? (
@@ -856,7 +902,7 @@ export function SlideCanvas() {
               }}
             />
           ) : null}
-          {slide && targets.length > 0 && !editingElementId && !croppingElementId ? (
+          {!readOnly && slide && targets.length > 0 && !editingElementId && !croppingElementId ? (
             <Moveable
               ref={moveableRef}
               target={targets.length === 1 ? targets[0] : targets}
@@ -999,8 +1045,11 @@ export function SlideCanvas() {
         pageStart={slideRect.left - RULER_THICKNESS}
         pageSize={pageWidth}
         scale={scale}
-        viewportSize={areaWidth - RULER_THICKNESS - RIGHT_RAIL_RESERVE}
+        viewportSize={
+          areaWidth - RULER_THICKNESS - RIGHT_RAIL_RESERVE - composerReserve
+        }
         offset={RULER_THICKNESS}
+        rightReserve={RIGHT_RAIL_RESERVE + composerReserve}
       />
       <Ruler
         orientation="vertical"
@@ -1026,8 +1075,12 @@ export function SlideCanvas() {
           pointerEvents: "none",
         }}
       />
-      <RightRail />
-      {contextMenu && (
+      {!readOnly && <RightRail />}
+      {!readOnly && showCanvasComments && (
+        <SlideCommentsRail slideId={slide?.id} anchorEl={slideEl} />
+      )}
+      {!readOnly && <CommentComposerPopup anchorEl={slideEl} />}
+      {!readOnly && contextMenu && (
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}

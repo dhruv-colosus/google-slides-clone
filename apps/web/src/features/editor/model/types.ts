@@ -94,10 +94,26 @@ export type DeckMeta = {
   schemaVersion: number;
 };
 
+export type CommentId = string;
+
+export type Comment = {
+  id: CommentId;
+  slideId: SlideId;
+  authorId: string;
+  authorName: string;
+  authorPicture: string | null;
+  text: string;
+  createdAt: number;
+  updatedAt: number | null;
+  resolvedAt: number | null;
+  resolvedByName: string | null;
+};
+
 export type Deck = {
   id: string;
   meta: DeckMeta;
   slides: Slide[];
+  comments?: Comment[];
 };
 
 export type ToolMode =

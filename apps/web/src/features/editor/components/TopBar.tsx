@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
 import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
@@ -9,27 +9,26 @@ import CloudSyncOutlinedIcon from "@mui/icons-material/CloudSyncOutlined";
 import CloudOffOutlinedIcon from "@mui/icons-material/CloudOffOutlined";
 import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import VideocamOutlinedIcon from "@mui/icons-material/VideocamOutlined";
-import ArrowDropDownRoundedIcon from "@mui/icons-material/ArrowDropDownRounded";
-import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import PublicOutlinedIcon from "@mui/icons-material/PublicOutlined";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
-import LinkRoundedIcon from "@mui/icons-material/LinkRounded";
-import PlayArrowRoundedIcon from "@mui/icons-material/PlayArrowRounded";
 import Tooltip from "@mui/material/Tooltip";
 import Snackbar from "@mui/material/Snackbar";
 import { UserAvatar } from "@/features/auth";
+import { useRenamePresentation } from "@/features/presentations";
 import {
-  usePresentation,
-  useRenamePresentation,
-  useSetVisibility,
-} from "@/features/presentations";
-import {
-  useActiveSlide,
   useEditorActions,
   useEditorDeckId,
   useEditorState,
 } from "../state/EditorContext";
+import { useMenuActions } from "../hooks/useMenuActions";
+import { useInsertImage } from "../hooks/useInsertImage";
+import { useImportPptx, buildToastMessage } from "../hooks/useImportPptx";
+import CircularProgress from "@mui/material/CircularProgress";
 import { MenuBar } from "./MenuBar";
+import { ShareButton } from "./ShareButton";
+import { SlideshowButton } from "./SlideshowButton";
+import { ShareModal } from "../share/ShareModal";
+import { useTotalUnresolvedCount } from "../comments/useComments";
+import commentStyles from "../comments/comments.module.css";
 import styles from "../editor.module.css";
 
 function SlidesLogoLink() {
@@ -89,106 +88,20 @@ function SaveStatusIndicator() {
   );
 }
 
-function ShareButton() {
-  const deckId = useEditorDeckId();
-  const { data } = usePresentation(deckId);
-  const setVisibility = useSetVisibility(deckId);
-  const [open, setOpen] = useState(false);
-  const [toastOpen, setToastOpen] = useState(false);
-
-  const isPublic = !!data?.is_public;
-
-  const toggleVisibility = useCallback(() => {
-    setVisibility.mutate(!isPublic);
-  }, [isPublic, setVisibility]);
-
-  const copyLink = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    const url = `${window.location.origin}/present/${deckId}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setToastOpen(true);
-    } catch {
-      // Silent fallback — user can copy URL manually.
-    }
-    setOpen(false);
-  }, [deckId]);
-
-  return (
-    <div className={styles.shareWrap}>
-      {open && (
-        <div className={styles.shareBackdrop} onClick={() => setOpen(false)} />
-      )}
-      <div
-        className={`${styles.splitButton} ${styles.splitButtonPrimary}`}
-        role="group"
-        aria-label="Share"
-      >
-        <button
-          className={styles.splitLabel}
-          aria-label="Share"
-          onClick={() => setOpen((v) => !v)}
-        >
-          {isPublic ? (
-            <PublicOutlinedIcon fontSize="small" />
-          ) : (
-            <LockOutlinedIcon fontSize="small" />
-          )}
-          <span>Share</span>
-        </button>
-        <button
-          className={styles.splitCaret}
-          aria-label="Share options"
-          onClick={() => setOpen((v) => !v)}
-        >
-          <ArrowDropDownRoundedIcon fontSize="small" />
-        </button>
-      </div>
-      {open && (
-        <div className={styles.shareDropdown}>
-          <button
-            className={styles.shareDropdownItem}
-            onClick={toggleVisibility}
-            disabled={setVisibility.isPending}
-          >
-            {isPublic ? (
-              <LockOutlinedIcon fontSize="small" />
-            ) : (
-              <PublicOutlinedIcon fontSize="small" />
-            )}
-            <span>
-              {isPublic ? "Restrict access" : "Anyone with the link can view"}
-            </span>
-          </button>
-          {isPublic && (
-            <button
-              className={styles.shareDropdownItem}
-              onClick={copyLink}
-              title="Copy public slideshow link"
-            >
-              <LinkRoundedIcon fontSize="small" />
-              <span>Copy link</span>
-            </button>
-          )}
-        </div>
-      )}
-      <Snackbar
-        open={toastOpen}
-        autoHideDuration={2000}
-        onClose={() => setToastOpen(false)}
-        message="Link copied to clipboard"
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-      />
-    </div>
-  );
-}
-
 export function TopBar() {
   const deckId = useEditorDeckId();
-  const { deck } = useEditorState();
-  const { renameDeck, startPresenting } = useEditorActions();
+  const { deck, commentsPanelOpen } = useEditorState();
+  const { renameDeck, toggleCommentsPanel } = useEditorActions();
   const renameMutation = useRenamePresentation();
-  const slide = useActiveSlide();
+  const insertImage = useInsertImage();
+  const unreadCommentCount = useTotalUnresolvedCount();
+  const [shareOpen, setShareOpen] = useState(false);
+
+  const titleInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const slideFileInputRef = useRef<HTMLInputElement>(null);
+  const { run: importPptx, status: importStatus } = useImportPptx();
+  const [importToast, setImportToast] = useState<string | null>(null);
 
   const handleBlur = useCallback(
     (value: string) => {
@@ -199,6 +112,27 @@ export function TopBar() {
     [renameMutation, deckId],
   );
 
+  const menuActions = useMenuActions({
+    onRenameFocus: () => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    },
+    onPickImageFile: () => fileInputRef.current?.click(),
+    onPickSlideFile: () => slideFileInputRef.current?.click(),
+    onOpenShare: () => setShareOpen(true),
+  });
+
+  const handleSlideFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      const result = await importPptx(file);
+      setImportToast(buildToastMessage(result));
+    },
+    [importPptx],
+  );
+
   return (
     <header className={styles.topbar}>
       <div className={styles.topLeft}>
@@ -206,8 +140,10 @@ export function TopBar() {
         <div className={styles.titleBlock}>
           <div className={styles.titleRow}>
             <input
+              ref={titleInputRef}
               className={styles.titleInput}
               value={deck.meta.title}
+              size={Math.min(Math.max(deck.meta.title.length || 5, 5), 30)}
               onChange={(e) => renameDeck(e.target.value)}
               onBlur={(e) => handleBlur(e.target.value)}
               aria-label="Presentation title"
@@ -220,39 +156,85 @@ export function TopBar() {
             </button>
             <SaveStatusIndicator />
           </div>
-          <MenuBar />
+          <MenuBar actions={menuActions} />
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) insertImage(file);
+            e.target.value = "";
+          }}
+        />
+        <input
+          ref={slideFileInputRef}
+          type="file"
+          accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+          style={{ display: "none" }}
+          onChange={handleSlideFileChange}
+        />
+        {importStatus === "parsing" && (
+          <Tooltip title="Importing slides…" placement="bottom">
+            <span
+              className={styles.iconButton}
+              aria-label="Importing slides"
+              style={{ color: "#1a73e8" }}
+            >
+              <CircularProgress size={16} thickness={5} color="inherit" />
+            </span>
+          </Tooltip>
+        )}
       </div>
 
       <div />
 
       <div className={styles.topRight}>
-        <button className={styles.iconButton} aria-label="Comments">
-          <ChatBubbleOutlineOutlinedIcon fontSize="small" />
-        </button>
+        <Tooltip
+          title={commentsPanelOpen ? "Close comments" : "Open comments"}
+          placement="bottom"
+        >
+          <button
+            className={`${styles.iconButton} ${commentStyles.topBarCommentBtn}`}
+            aria-label="Comments"
+            aria-pressed={commentsPanelOpen}
+            onClick={toggleCommentsPanel}
+          >
+            <ChatBubbleOutlineOutlinedIcon fontSize="small" />
+            {unreadCommentCount > 0 && (
+              <span
+                className={commentStyles.topBarBadge}
+                aria-label={`${unreadCommentCount} unresolved`}
+              >
+                {unreadCommentCount > 99 ? "99+" : unreadCommentCount}
+              </span>
+            )}
+          </button>
+        </Tooltip>
         <button className={styles.iconButton} aria-label="Present with camera">
           <VideocamOutlinedIcon fontSize="small" />
         </button>
-        <div className={styles.splitButton} role="group" aria-label="Slideshow">
-          <button
-            className={styles.splitLabel}
-            aria-label="Start slideshow"
-            title="Start slideshow (Cmd+Enter)"
-            onClick={() => startPresenting(slide?.id)}
-          >
-            <PlayArrowRoundedIcon fontSize="small" />
-            <span>Slideshow</span>
-          </button>
-          <button className={styles.splitCaret} aria-label="Slideshow options">
-            <ArrowDropDownRoundedIcon fontSize="small" />
-          </button>
-        </div>
-        <ShareButton />
+        <SlideshowButton />
+        <ShareButton deckId={deckId} />
         <button className={styles.iconButton} aria-label="AI assistant">
           <AutoAwesomeIcon fontSize="small" />
         </button>
         <UserAvatar size={32} />
       </div>
+      <ShareModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        deckId={deckId}
+      />
+      <Snackbar
+        open={importToast !== null}
+        autoHideDuration={5000}
+        onClose={() => setImportToast(null)}
+        message={importToast ?? ""}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
     </header>
   );
 }

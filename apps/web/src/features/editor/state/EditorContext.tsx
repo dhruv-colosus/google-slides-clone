@@ -27,6 +27,7 @@ import type {
   Deck,
   ElementId,
   ShapeKind,
+  Slide,
   SlideBackground,
   SlideElement,
   SlideId,
@@ -46,6 +47,11 @@ export type ZoomMode = "fit" | number;
 
 export type PresenterBlank = "none" | "white" | "black";
 
+export type CommentComposerState = {
+  slideId: SlideId;
+  editingCommentId?: string;
+};
+
 export type UiState = {
   selection: Selection;
   tool: ToolMode;
@@ -56,9 +62,11 @@ export type UiState = {
   saveState: "idle" | "saving" | "saved" | "offline";
   presenting: boolean;
   presenterBlank: PresenterBlank;
+  commentsPanelOpen: boolean;
+  commentComposer: CommentComposerState | null;
 };
 
-export type EditorState = UiState & { deck: Deck };
+export type EditorState = UiState & { deck: Deck; readOnly: boolean };
 
 type UiAction =
   | { type: "select"; slideId: SlideId | null; elementIds?: ElementId[] }
@@ -73,7 +81,11 @@ type UiAction =
   | { type: "setSaveState"; state: UiState["saveState"] }
   | { type: "startPresenting"; slideId?: SlideId }
   | { type: "stopPresenting" }
-  | { type: "setPresenterBlank"; mode: PresenterBlank };
+  | { type: "setPresenterBlank"; mode: PresenterBlank }
+  | { type: "setCommentsPanelOpen"; open: boolean }
+  | { type: "toggleCommentsPanel" }
+  | { type: "openCommentComposer"; slideId: SlideId; editingCommentId?: string }
+  | { type: "closeCommentComposer" };
 
 function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -162,6 +174,21 @@ function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, presenting: false, presenterBlank: "none" };
     case "setPresenterBlank":
       return { ...state, presenterBlank: action.mode };
+    case "setCommentsPanelOpen":
+      return { ...state, commentsPanelOpen: action.open };
+    case "toggleCommentsPanel":
+      return { ...state, commentsPanelOpen: !state.commentsPanelOpen };
+    case "openCommentComposer":
+      return {
+        ...state,
+        commentComposer: {
+          slideId: action.slideId,
+          editingCommentId: action.editingCommentId,
+        },
+        selection: { slideId: action.slideId, elementIds: [] },
+      };
+    case "closeCommentComposer":
+      return { ...state, commentComposer: null };
     default:
       return state;
   }
@@ -169,6 +196,7 @@ function uiReducer(state: UiState, action: UiAction): UiState {
 
 type EditorContextValue = {
   deckId: string;
+  readOnly: boolean;
   ui: UiState;
   uiDispatch: Dispatch<UiAction>;
   provider: DocProvider;
@@ -182,10 +210,12 @@ const EditorContext = createContext<EditorContextValue | null>(null);
 export function EditorProvider({
   deckId,
   initialDeck,
+  readOnly = false,
   children,
 }: {
   deckId: string;
   initialDeck: Deck;
+  readOnly?: boolean;
   children: ReactNode;
 }) {
   const [provider, setProvider] = useState<DocProvider>(
@@ -222,6 +252,8 @@ export function EditorProvider({
     saveState: "idle" as const,
     presenting: false,
     presenterBlank: "none" as const,
+    commentsPanelOpen: false,
+    commentComposer: null,
   }));
 
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
@@ -250,6 +282,7 @@ export function EditorProvider({
   const value = useMemo(
     () => ({
       deckId,
+      readOnly,
       ui,
       uiDispatch,
       provider,
@@ -257,7 +290,15 @@ export function EditorProvider({
       setActiveEditorFor,
       clearActiveEditor,
     }),
-    [deckId, ui, provider, activeEditor, setActiveEditorFor, clearActiveEditor],
+    [
+      deckId,
+      readOnly,
+      ui,
+      provider,
+      activeEditor,
+      setActiveEditorFor,
+      clearActiveEditor,
+    ],
   );
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
 }
@@ -292,9 +333,13 @@ function useDeck(): Deck {
 }
 
 export function useEditorState(): EditorState {
-  const { ui } = useEditor();
+  const { ui, readOnly } = useEditor();
   const deck = useDeck();
-  return { ...ui, deck };
+  return { ...ui, deck, readOnly };
+}
+
+export function useEditorReadOnly(): boolean {
+  return useEditor().readOnly;
 }
 
 export function useActiveSlide() {
@@ -381,6 +426,18 @@ export function useEditorActions() {
     const newId = provider.addSlide(activeSlideId);
     uiDispatch({ type: "setActiveSlide", slideId: newId });
   }, [provider, uiDispatch, activeSlideId]);
+
+  const insertSlides = useCallback(
+    (slides: Slide[], afterSlideId?: SlideId | null): SlideId[] => {
+      const ids = provider.insertSlides(
+        slides,
+        afterSlideId ?? activeSlideId ?? null,
+      );
+      if (ids[0]) uiDispatch({ type: "setActiveSlide", slideId: ids[0] });
+      return ids;
+    },
+    [provider, uiDispatch, activeSlideId],
+  );
 
   const deleteSlide = useCallback(
     (slideId: SlideId) => {
@@ -500,6 +557,24 @@ export function useEditorActions() {
     [provider],
   );
 
+  const toggleCommentsPanel = useCallback(
+    () => uiDispatch({ type: "toggleCommentsPanel" }),
+    [uiDispatch],
+  );
+  const setCommentsPanelOpen = useCallback(
+    (open: boolean) => uiDispatch({ type: "setCommentsPanelOpen", open }),
+    [uiDispatch],
+  );
+  const openCommentComposer = useCallback(
+    (slideId: SlideId, editingCommentId?: string) =>
+      uiDispatch({ type: "openCommentComposer", slideId, editingCommentId }),
+    [uiDispatch],
+  );
+  const closeCommentComposer = useCallback(
+    () => uiDispatch({ type: "closeCommentComposer" }),
+    [uiDispatch],
+  );
+
   return {
     selectSlide,
     selectElements,
@@ -511,6 +586,7 @@ export function useEditorActions() {
     setSlideBackground,
     applyLayout,
     addSlide,
+    insertSlides,
     deleteSlide,
     duplicateSlide,
     reorderSlides,
@@ -530,6 +606,10 @@ export function useEditorActions() {
     stopPresenting,
     setPresenterBlank,
     updateTextBlock,
+    toggleCommentsPanel,
+    setCommentsPanelOpen,
+    openCommentComposer,
+    closeCommentComposer,
   };
 }
 

@@ -13,6 +13,8 @@ import styles from "./menuBar.module.css";
 
 type ChildOpen = { idx: number; rect: DOMRect } | null;
 
+export type MenuActions = Record<string, () => void>;
+
 type DropdownProps = {
   items: MenuNode[];
   anchorRect: DOMRect;
@@ -20,6 +22,7 @@ type DropdownProps = {
   onClose: () => void;
   onHoverIn?: () => void;
   onHoverOut?: () => void;
+  actions?: MenuActions;
 };
 
 function Dropdown({
@@ -29,6 +32,7 @@ function Dropdown({
   onClose,
   onHoverIn,
   onHoverOut,
+  actions,
 }: DropdownProps) {
   const [openChild, setOpenChild] = useState<ChildOpen>(null);
 
@@ -87,7 +91,12 @@ function Dropdown({
                   }
                 }}
                 onClick={() => {
-                  if (!hasChildren) onClose();
+                  if (hasChildren) return;
+                  if (item.action) {
+                    const handler = actions?.[item.action];
+                    if (handler) handler();
+                  }
+                  onClose();
                 }}
               >
                 <span className={styles.itemIcon}>
@@ -120,6 +129,7 @@ function Dropdown({
           onClose={onClose}
           onHoverIn={onHoverIn}
           onHoverOut={onHoverOut}
+          actions={actions}
         />
       )}
     </>
@@ -128,9 +138,20 @@ function Dropdown({
 
 type TopOpen = { idx: number; rect: DOMRect } | null;
 
-export function MenuBar() {
+export function MenuBar({
+  actions,
+  menuLabels,
+}: {
+  actions?: MenuActions;
+  /** If provided, only top-level menus whose labels appear in this list are shown. */
+  menuLabels?: string[];
+} = {}) {
   const [open, setOpen] = useState<TopOpen>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const menus = menuLabels
+    ? MENU_CONFIG.filter((m) => menuLabels.includes(m.label))
+    : MENU_CONFIG;
 
   const cancelClose = () => {
     if (closeTimerRef.current) {
@@ -158,7 +179,7 @@ export function MenuBar() {
         onMouseEnter={cancelClose}
         onMouseLeave={scheduleClose}
       >
-        {MENU_CONFIG.map((menu, idx) => {
+        {menus.map((menu, idx) => {
           const isOpen = open?.idx === idx;
           return (
             <button
@@ -195,12 +216,13 @@ export function MenuBar() {
       </nav>
       {open && (
         <Dropdown
-          items={MENU_CONFIG[open.idx].children}
+          items={menus[open.idx].children}
           anchorRect={open.rect}
           side="bottom"
           onClose={close}
           onHoverIn={cancelClose}
           onHoverOut={scheduleClose}
+          actions={actions}
         />
       )}
     </>

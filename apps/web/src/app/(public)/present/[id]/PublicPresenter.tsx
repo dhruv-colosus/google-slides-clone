@@ -1,16 +1,12 @@
 "use client";
 
-import { useLayoutEffect } from "react";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 
-import { PresenterShell } from "@/features/editor/components/PresenterShell";
-import {
-  EditorProvider,
-  useEditorActions,
-} from "@/features/editor/state/EditorContext";
-import { usePublicPresentation } from "@/features/presentations";
+import { EditorShell } from "@/features/editor/components/EditorShell";
+import { EditorProvider } from "@/features/editor/state/EditorContext";
+import { usePresentationForViewer } from "@/features/presentations/viewerHooks";
 
 const centeredSx = {
   minHeight: "100vh",
@@ -25,16 +21,8 @@ const centeredSx = {
   textAlign: "center",
 } as const;
 
-function AutoStartPresenter() {
-  const { startPresenting } = useEditorActions();
-  useLayoutEffect(() => {
-    startPresenting();
-  }, [startPresenting]);
-  return <PresenterShell />;
-}
-
 export function PublicPresenter({ deckId }: { deckId: string }) {
-  const { data, isLoading, isError } = usePublicPresentation(deckId);
+  const { data, isLoading, isError } = usePresentationForViewer(deckId);
 
   if (isLoading) {
     return (
@@ -57,8 +45,8 @@ export function PublicPresenter({ deckId }: { deckId: string }) {
   }
 
   return (
-    <EditorProvider deckId={deckId} initialDeck={data.content}>
-      <AutoStartPresenter />
+    <EditorProvider deckId={deckId} initialDeck={data.content} readOnly>
+      <EditorShell />
     </EditorProvider>
   );
 }

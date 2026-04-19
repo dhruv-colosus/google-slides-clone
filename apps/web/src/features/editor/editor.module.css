@@ -3,6 +3,7 @@
 .shell {
   display: grid;
   grid-template-rows: 64px 56px 1fr;
+  grid-template-columns: 1fr;
   height: 100vh;
   width: 100vw;
   background: #f9fafd;
@@ -20,10 +21,58 @@
   overflow: hidden;
 }
 
+.shellWithComments {
+  grid-template-columns: 1fr 360px;
+}
+
+.shellReadOnly {
+  grid-template-rows: 64px 1fr;
+}
+
+.shellReadOnly .body {
+  grid-row: 2;
+}
+
+@media (max-width: 900px) {
+  .shellWithComments {
+    grid-template-columns: 1fr;
+  }
+}
+
+.topbarSlot {
+  grid-row: 1;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.toolbarSlot {
+  grid-row: 2;
+  grid-column: 1;
+  min-width: 0;
+}
+
+.bodySlot {
+  grid-row: 3;
+  grid-column: 1;
+  min-width: 0;
+}
+
+.commentsSlot {
+  grid-row: 2 / span 2;
+  grid-column: 2;
+  min-width: 0;
+  min-height: 0;
+}
+
 .body {
+  grid-row: 3;
+  grid-column: 1;
   display: grid;
   grid-template-columns: 196px 1fr;
   min-height: 0;
+  min-width: 0;
+  height: 100%;
+  position: relative;
 }
 
 .workspace {
@@ -36,9 +85,12 @@
 /* ---------------- Top bar ---------------- */
 
 .topbar {
+  grid-row: 1;
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
+  min-width: 0;
   padding: 0 12px 0 8px;
   background: #f9fafd;
 }
@@ -91,11 +143,12 @@
   background: transparent;
   padding: 0px 6px;
   border-radius: 4px;
-  min-width: 0;
-  max-width: 420px;
+  min-width: 60px;
+  width: auto;
   color: #1f1f1f;
   letter-spacing: -0.1px;
   opacity: 0.75;
+  field-sizing: content;
 }
 
 .titleInput:hover {
@@ -156,11 +209,11 @@
 .splitButton {
   display: inline-flex;
   align-items: stretch;
-  background: #fff;
-  border: 1px solid #dadce0;
+  background: transparent;
+  border: 1.5px solid #80868b;
   border-radius: 999px;
   overflow: hidden;
-  height: 36px;
+  height: 40px;
   font-size: 14px;
   font-weight: 500;
   color: #1f1f1f;
@@ -168,7 +221,7 @@
 }
 
 .splitButton:hover {
-  background: #f6f7f9;
+  background: #f1f3f4;
 }
 
 .splitLabel {
@@ -190,7 +243,7 @@
   border: none;
   background: transparent;
   color: inherit;
-  border-left: 1px solid #dadce0;
+  border-left: 1.5px solid #80868b;
   cursor: pointer;
 }
 
@@ -206,6 +259,52 @@
 
 .splitButtonPrimary .splitCaret {
   border-left-color: #a8cbea;
+}
+
+.viewOnlyPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: 999px;
+  background: #f1f3f4;
+  color: #3c4043;
+  font-size: 13px;
+  font-weight: 500;
+  user-select: none;
+}
+
+.signInPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 16px;
+  height: 36px;
+  border-radius: 999px;
+  background: #0b57d0;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 120ms ease;
+}
+
+.signInPill:hover {
+  background: #0a4fbc;
+}
+
+.readOnlyTitle {
+  font-size: 18px;
+  font-weight: 400;
+  color: #1f1f1f;
+  padding: 0 6px;
+  letter-spacing: -0.1px;
+  opacity: 0.85;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .shareWrap {
@@ -225,9 +324,10 @@
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  min-width: 170px;
+  min-width: 260px;
   z-index: 100;
   overflow: hidden;
+  padding: 6px 0;
 }
 
 .shareDropdownItem {
@@ -247,6 +347,22 @@
 
 .shareDropdownItem:hover {
   background: #f1f3f4;
+}
+
+.shareDropdownStatus {
+  padding: 10px 16px 6px;
+  font-size: 13px;
+  color: #3c4043;
+  line-height: 1.4;
+  border-top: 1px solid #e8eaed;
+  margin-top: 4px;
+}
+
+.shareDropdownStatusTitle {
+  font-weight: 600;
+  font-size: 14px;
+  color: #202124;
+  margin-bottom: 2px;
 }
 
 .avatar {
@@ -272,10 +388,13 @@
 /* ---------------- Toolbar ---------------- */
 
 .toolbarWrap {
+  grid-row: 2;
+  grid-column: 1;
   padding: 8px 12px;
   background: #f9fafd;
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .toolbar {
@@ -622,6 +741,14 @@
   padding-left: 1.4em;
 }
 
+.tiptapContent ul {
+  list-style-type: disc;
+}
+
+.tiptapContent ol {
+  list-style-type: decimal;
+}
+
 .tiptapContent .is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: currentColor;
@@ -837,7 +964,6 @@
   border: 1px solid #9aa0a6;
   box-sizing: content-box;
   overflow: hidden;
-  transform-origin: center center;
 }
 
 .placeholderFrame {

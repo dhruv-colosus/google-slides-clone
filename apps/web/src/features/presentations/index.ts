@@ -1,4 +1,4 @@
-export type { DeckDetail, DeckSummary } from "./types";
+export type { Collaborator, DeckDetail, DeckSummary } from "./types";
 export {
   presentationEndpoints,
   createPresentation,
@@ -9,6 +9,9 @@ export {
   setPresentationVisibility,
   deletePresentation,
   getPublicPresentation,
+  listCollaborators,
+  addCollaborator,
+  removeCollaborator,
 } from "./api";
 export {
   PRESENTATIONS_QUERY_KEY,
@@ -23,4 +26,6 @@ export {
 
   useSetVisibility,
   useDeletePresentation,
+  useAddCollaborator,
+  useRemoveCollaborator,
 } from "./hooks";

@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class DeckCreate(BaseModel):
@@ -47,6 +47,25 @@ class DeckSummary(BaseModel):
     thumbnail: DeckThumbnail | None = None
 
 
+class CollaboratorOut(BaseModel):
+    email: str
+    role: Literal["viewer", "editor"] = "viewer"
+    created_at: datetime
+
+    @classmethod
+    def from_orm_row(cls, row: Any) -> "CollaboratorOut":
+        return cls(
+            email=row.collaborator_email,
+            role=row.role,
+            created_at=row.created_at,
+        )
+
+
+class CollaboratorIn(BaseModel):
+    email: EmailStr
+    role: Literal["viewer", "editor"] = "viewer"
+
+
 class DeckDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -57,3 +76,4 @@ class DeckDetail(BaseModel):
     is_public: bool
     created_at: datetime
     updated_at: datetime
+    collaborators: list[CollaboratorOut] = Field(default_factory=list)

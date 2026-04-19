@@ -20,6 +20,7 @@ import {
 import { getTextSchema } from "../tiptap/extensions";
 import type {
   BaseElement,
+  Comment,
   Deck,
   DeckMeta,
   ElementId,
@@ -34,6 +35,57 @@ import type {
 
 export type YSlide = Y.Map<unknown>;
 export type YElement = Y.Map<unknown>;
+export type YComment = Y.Map<unknown>;
+
+const COMMENT_KEYS: Array<keyof Comment> = [
+  "id",
+  "slideId",
+  "authorId",
+  "authorName",
+  "authorPicture",
+  "text",
+  "createdAt",
+  "updatedAt",
+  "resolvedAt",
+  "resolvedByName",
+];
+
+export function commentToYMap(c: Comment): YComment {
+  const m = new Y.Map<unknown>();
+  for (const k of COMMENT_KEYS) m.set(k, c[k]);
+  return m;
+}
+
+export function readComment(m: YComment): Comment {
+  return {
+    id: m.get("id") as string,
+    slideId: m.get("slideId") as string,
+    authorId: m.get("authorId") as string,
+    authorName: m.get("authorName") as string,
+    authorPicture: (m.get("authorPicture") as string | null) ?? null,
+    text: m.get("text") as string,
+    createdAt: m.get("createdAt") as number,
+    updatedAt: (m.get("updatedAt") as number | null) ?? null,
+    resolvedAt: (m.get("resolvedAt") as number | null) ?? null,
+    resolvedByName: (m.get("resolvedByName") as string | null) ?? null,
+  };
+}
+
+export function findCommentYMap(doc: Y.Doc, commentId: string): YComment | null {
+  const comments = doc.getArray<YComment>("comments");
+  for (const c of comments) {
+    if (c.get("id") === commentId) return c;
+  }
+  return null;
+}
+
+export function findCommentIndex(doc: Y.Doc, commentId: string): number {
+  const comments = doc.getArray<YComment>("comments");
+  for (let i = 0; i < comments.length; i++) {
+    if (comments.get(i).get("id") === commentId) return i;
+  }
+  return -1;
+}
 
 export function sanitizeTextBlock(text: TextBlock): TextBlock {
   // `contentJson` is a derived projection of the Y.XmlFragment; the fragment
@@ -85,6 +137,7 @@ function slideToYMap(s: Slide): YSlide {
 export function hydrateDoc(doc: Y.Doc, deck: Deck) {
   const meta = doc.getMap<unknown>("meta");
   const slides = doc.getArray<YSlide>("slides");
+  const comments = doc.getArray<YComment>("comments");
   doc.transact(() => {
     meta.set("id", deck.id);
     meta.set("title", deck.meta.title);
@@ -94,6 +147,10 @@ export function hydrateDoc(doc: Y.Doc, deck: Deck) {
     meta.set("schemaVersion", deck.meta.schemaVersion);
     if (slides.length) slides.delete(0, slides.length);
     slides.insert(0, deck.slides.map(slideToYMap));
+    if (comments.length) comments.delete(0, comments.length);
+    if (deck.comments?.length) {
+      comments.insert(0, deck.comments.map(commentToYMap));
+    }
 
     // Second pass: now that every YMap/YArray is attached to the doc, populate
     // each text element's Y.XmlFragment from its persisted ProseMirror JSON.
@@ -184,6 +241,7 @@ function readSlide(m: YSlide): Slide {
 export function readDeck(doc: Y.Doc): Deck {
   const meta = doc.getMap<unknown>("meta");
   const slides = doc.getArray<YSlide>("slides");
+  const comments = doc.getArray<YComment>("comments");
   const deckMeta: DeckMeta = {
     title: meta.get("title") as string,
     themeId: meta.get("themeId") as string,
@@ -195,6 +253,7 @@ export function readDeck(doc: Y.Doc): Deck {
     id: meta.get("id") as string,
     meta: deckMeta,
     slides: slides.toArray().map(readSlide),
+    comments: comments.toArray().map(readComment),
   };
 }
 
@@ -224,6 +283,17 @@ export function findElementYMap(
     if (el.get("id") === elementId) return { el, index: i };
   }
   return null;
+}
+
+export function populateTextFragmentFromJson(yEl: YElement, contentJson: unknown): void {
+  if (!contentJson || typeof contentJson !== "object") return;
+  const fragment = yEl.get("doc");
+  if (!(fragment instanceof Y.XmlFragment)) return;
+  try {
+    prosemirrorJSONToYXmlFragment(getTextSchema(), contentJson, fragment);
+  } catch (err) {
+    console.warn("[populateTextFragment] failed to hydrate text fragment", err);
+  }
 }
 
 export { slideToYMap, elementToYMap };

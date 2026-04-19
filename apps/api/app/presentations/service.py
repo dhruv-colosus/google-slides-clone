@@ -1,10 +1,11 @@
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.presentations.models import Deck
+from app.presentations.models import Deck, PresentationCollaborator
 
 
 def _blank_content(deck_id: str, title: str) -> dict[str, Any]:
@@ -84,10 +85,35 @@ async def list_decks(db: AsyncSession, owner_id: int) -> list[Deck]:
 async def get_deck(
     db: AsyncSession, deck_id: UUID, owner_id: int
 ) -> Deck | None:
+    """Strict owner-only fetch. Used by mutating endpoints."""
     result = await db.execute(
         select(Deck).where(Deck.id == deck_id, Deck.owner_id == owner_id)
     )
     return result.scalar_one_or_none()
+
+
+async def get_deck_for_viewer(
+    db: AsyncSession, deck_id: UUID, user_id: int, user_email: str
+) -> Deck | None:
+    """Read access: owner OR invited collaborator (by email)."""
+    email = user_email.strip().lower()
+    result = await db.execute(
+        select(Deck).where(Deck.id == deck_id)
+    )
+    deck = result.scalar_one_or_none()
+    if deck is None:
+        return None
+    if deck.owner_id == user_id:
+        return deck
+    collab = await db.execute(
+        select(PresentationCollaborator.id).where(
+            PresentationCollaborator.presentation_id == deck_id,
+            func.lower(PresentationCollaborator.collaborator_email) == email,
+        )
+    )
+    if collab.scalar_one_or_none() is not None:
+        return deck
+    return None
 
 
 async def get_deck_public(db: AsyncSession, deck_id: UUID) -> Deck | None:
@@ -95,6 +121,59 @@ async def get_deck_public(db: AsyncSession, deck_id: UUID) -> Deck | None:
         select(Deck).where(Deck.id == deck_id, Deck.is_public.is_(True))
     )
     return result.scalar_one_or_none()
+
+
+async def list_collaborators(
+    db: AsyncSession, deck_id: UUID
+) -> list[PresentationCollaborator]:
+    result = await db.execute(
+        select(PresentationCollaborator)
+        .where(PresentationCollaborator.presentation_id == deck_id)
+        .order_by(PresentationCollaborator.created_at.asc())
+    )
+    return list(result.scalars().all())
+
+
+async def add_collaborator(
+    db: AsyncSession,
+    deck_id: UUID,
+    email: str,
+    role: str = "viewer",
+) -> PresentationCollaborator | None:
+    normalized = email.strip().lower()
+    if not normalized:
+        return None
+    stmt = (
+        pg_insert(PresentationCollaborator)
+        .values(
+            presentation_id=deck_id,
+            collaborator_email=normalized,
+            role=role,
+        )
+        .on_conflict_do_update(
+            constraint="uq_presentation_collaborator_email",
+            set_={"role": role},
+        )
+        .returning(PresentationCollaborator)
+    )
+    result = await db.execute(stmt)
+    row = result.scalar_one_or_none()
+    await db.commit()
+    return row
+
+
+async def remove_collaborator(
+    db: AsyncSession, deck_id: UUID, email: str
+) -> bool:
+    normalized = email.strip().lower()
+    result = await db.execute(
+        delete(PresentationCollaborator).where(
+            PresentationCollaborator.presentation_id == deck_id,
+            func.lower(PresentationCollaborator.collaborator_email) == normalized,
+        )
+    )
+    await db.commit()
+    return (result.rowcount or 0) > 0
 
 
 async def update_deck_content(

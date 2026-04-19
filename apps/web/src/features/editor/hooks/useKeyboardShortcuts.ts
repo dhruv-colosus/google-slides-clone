@@ -7,6 +7,7 @@ import {
   useEditorState,
 } from "../state/EditorContext";
 import type { SlideElement } from "../model/types";
+import { editorClipboard } from "./editorClipboard";
 
 const ZOOM_STEPS = [50, 75, 100, 125, 150, 200] as const;
 
@@ -37,7 +38,8 @@ function isEditableTarget(target: EventTarget | null): boolean {
  * and cleaned up automatically, avoiding useEffect.
  */
 export function useKeyboardShortcuts() {
-  const { selection, editingElementId, zoom, presenting } = useEditorState();
+  const { selection, editingElementId, zoom, presenting, readOnly } =
+    useEditorState();
   const slide = useActiveSlide();
   const {
     undo,
@@ -52,14 +54,20 @@ export function useKeyboardShortcuts() {
     setZoom,
     addSlide,
     startPresenting,
+    openCommentComposer,
   } = useEditorActions();
-
-  const clipboardRef = useRef<SlideElement[]>([]);
 
   const handlerRef = useRef<(e: KeyboardEvent) => void>(() => {});
   handlerRef.current = (e: KeyboardEvent) => {
     const key = e.key;
     if (presenting) return;
+    if (readOnly) {
+      if ((key === "F5" || ((e.metaKey || e.ctrlKey) && key === "Enter"))) {
+        e.preventDefault();
+        startPresenting();
+      }
+      return;
+    }
     if (editingElementId) {
       if (key === "Escape") {
         e.preventDefault();
@@ -104,7 +112,13 @@ export function useKeyboardShortcuts() {
       return;
     }
 
-    if (meta && (key === "m" || key === "M")) {
+    if (e.metaKey && e.ctrlKey && (key === "m" || key === "M")) {
+      e.preventDefault();
+      if (slide) openCommentComposer(slide.id);
+      return;
+    }
+
+    if (meta && !e.ctrlKey && !e.altKey && (key === "m" || key === "M")) {
       e.preventDefault();
       addSlide();
       return;
@@ -136,20 +150,19 @@ export function useKeyboardShortcuts() {
 
     if (meta && (key === "c" || key === "C") && ids.length) {
       e.preventDefault();
-      const copies = slide.elements.filter((el) => ids.includes(el.id));
-      clipboardRef.current = copies.map((el) => JSON.parse(JSON.stringify(el)));
+      editorClipboard.set(slide.elements.filter((el) => ids.includes(el.id)));
       return;
     }
 
-    if (meta && (key === "v" || key === "V") && clipboardRef.current.length) {
+    if (meta && (key === "v" || key === "V") && editorClipboard.size()) {
       e.preventDefault();
       const maxZ = slide.elements.length
         ? Math.max(...slide.elements.map((el) => el.z))
         : 0;
       const newIds: string[] = [];
-      clipboardRef.current.forEach((src, i) => {
+      editorClipboard.get().forEach((src, i) => {
         const copy: SlideElement = {
-          ...JSON.parse(JSON.stringify(src)),
+          ...src,
           id: `el-${crypto.randomUUID().slice(0, 8)}`,
           x: src.x + 20,
           y: src.y + 20,

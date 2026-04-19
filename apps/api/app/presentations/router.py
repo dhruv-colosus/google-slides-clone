@@ -9,6 +9,8 @@ from app.auth.models import User
 from app.presentations import service
 from app.presentations.models import Deck
 from app.presentations.schemas import (
+    CollaboratorIn,
+    CollaboratorOut,
     DeckContentUpdate,
     DeckCreate,
     DeckDetail,
@@ -19,6 +21,21 @@ from app.presentations.schemas import (
 )
 
 router = APIRouter(prefix="/presentations", tags=["presentations"])
+
+
+async def _build_detail(db: AsyncSession, deck: Deck) -> DeckDetail:
+    collaborators = await service.list_collaborators(db, deck.id)
+    collab_out = [CollaboratorOut.from_orm_row(c) for c in collaborators]
+    return DeckDetail(
+        id=deck.id,
+        owner_id=deck.owner_id,
+        title=deck.title,
+        content=deck.content,
+        is_public=deck.is_public,
+        created_at=deck.created_at,
+        updated_at=deck.updated_at,
+        collaborators=collab_out,
+    )
 
 
 def _build_summary(deck: Deck) -> DeckSummary:
@@ -53,7 +70,7 @@ async def create_presentation(
     db: AsyncSession = Depends(get_db),
 ) -> DeckDetail:
     deck = await service.create_deck(db, current_user.id, payload.title)
-    return DeckDetail.model_validate(deck)
+    return await _build_detail(db, deck)
 
 
 @router.get("", response_model=list[DeckSummary])
@@ -71,13 +88,15 @@ async def get_presentation(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> DeckDetail:
-    deck = await service.get_deck(db, deck_id, current_user.id)
+    deck = await service.get_deck_for_viewer(
+        db, deck_id, current_user.id, current_user.email
+    )
     if deck is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Presentation not found",
         )
-    return DeckDetail.model_validate(deck)
+    return await _build_detail(db, deck)
 
 
 @router.patch("/{deck_id}", response_model=DeckDetail)
@@ -95,7 +114,7 @@ async def update_presentation_content(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Presentation not found",
         )
-    return DeckDetail.model_validate(deck)
+    return await _build_detail(db, deck)
 
 
 @router.patch("/{deck_id}/rename", response_model=DeckSummary)
@@ -158,4 +177,74 @@ async def get_public_presentation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Presentation not found",
         )
-    return DeckDetail.model_validate(deck)
+    return await _build_detail(db, deck)
+
+
+@router.get(
+    "/{deck_id}/collaborators",
+    response_model=list[CollaboratorOut],
+)
+async def list_presentation_collaborators(
+    deck_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[CollaboratorOut]:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    rows = await service.list_collaborators(db, deck_id)
+    return [CollaboratorOut.from_orm_row(r) for r in rows]
+
+
+@router.post(
+    "/{deck_id}/collaborators",
+    response_model=CollaboratorOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_presentation_collaborator(
+    deck_id: UUID,
+    payload: CollaboratorIn,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> CollaboratorOut:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    row = await service.add_collaborator(db, deck_id, payload.email, payload.role)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid collaborator email",
+        )
+    return CollaboratorOut.from_orm_row(row)
+
+
+@router.delete(
+    "/{deck_id}/collaborators/{email}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def remove_presentation_collaborator(
+    deck_id: UUID,
+    email: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    removed = await service.remove_collaborator(db, deck_id, email)
+    if not removed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Collaborator not found",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

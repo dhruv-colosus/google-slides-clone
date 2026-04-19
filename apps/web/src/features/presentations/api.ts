@@ -1,6 +1,6 @@
 import type { Deck } from "@/features/editor/model/types";
 
-import type { DeckDetail, DeckSummary } from "./types";
+import type { Collaborator, DeckDetail, DeckSummary } from "./types";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -14,6 +14,9 @@ export const presentationEndpoints = {
   visibility: (id: string) => `${API_URL}/presentations/${id}/visibility`,
   delete: (id: string) => `${API_URL}/presentations/${id}`,
   public: (id: string) => `${API_URL}/presentations/${id}/public`,
+  collaborators: (id: string) => `${API_URL}/presentations/${id}/collaborators`,
+  collaborator: (id: string, email: string) =>
+    `${API_URL}/presentations/${id}/collaborators/${encodeURIComponent(email)}`,
 };
 
 async function parseOrThrow<T>(res: Response, message: string): Promise<T> {
@@ -106,4 +109,39 @@ export async function getPublicPresentation(id: string): Promise<DeckDetail> {
     cache: "no-store",
   });
   return parseOrThrow<DeckDetail>(res, "Presentation not available");
+}
+
+export async function listCollaborators(id: string): Promise<Collaborator[]> {
+  const res = await fetch(presentationEndpoints.collaborators(id), {
+    credentials: "include",
+    cache: "no-store",
+  });
+  return parseOrThrow<Collaborator[]>(res, "Failed to load collaborators");
+}
+
+export async function addCollaborator(
+  id: string,
+  email: string,
+  role: Collaborator["role"] = "viewer",
+): Promise<Collaborator> {
+  const res = await fetch(presentationEndpoints.collaborators(id), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  return parseOrThrow<Collaborator>(res, "Failed to add collaborator");
+}
+
+export async function removeCollaborator(
+  id: string,
+  email: string,
+): Promise<void> {
+  const res = await fetch(presentationEndpoints.collaborator(id, email), {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to remove collaborator (${res.status})`);
+  }
 }
