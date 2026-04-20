@@ -77,3 +77,27 @@ class DeckDetail(BaseModel):
     created_at: datetime
     updated_at: datetime
     collaborators: list[CollaboratorOut] = Field(default_factory=list)
+
+
+class VersionSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    presentation_id: UUID
+    author_id: int
+    author_name: str | None = None
+    version_number: int
+    label: str | None = None
+    created_at: datetime
+
+
+class VersionDetail(VersionSummary):
+    content: dict[str, Any]
+
+
+class VersionCreate(BaseModel):
+    label: str | None = Field(default=None, max_length=200)
+
+
+class VersionNameUpdate(BaseModel):
+    label: str = Field(min_length=1, max_length=200)

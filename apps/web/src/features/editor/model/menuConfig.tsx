@@ -211,8 +211,14 @@ export const MENU_CONFIG: TopMenu[] = [
         label: "Version history",
         icon: HistoryOutlinedIcon,
         children: [
-          { label: "See version history" },
-          { label: "Name current version" },
+          {
+            label: "See version history",
+            action: "file.versionHistory",
+          },
+          {
+            label: "Name current version",
+            action: "file.nameVersion",
+          },
         ],
       },
       { label: "Make available offline", icon: OfflinePinOutlinedIcon },

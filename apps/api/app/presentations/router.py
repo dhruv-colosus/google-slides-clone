@@ -18,6 +18,10 @@ from app.presentations.schemas import (
     DeckSetPublic,
     DeckSummary,
     DeckThumbnail,
+    VersionCreate,
+    VersionDetail,
+    VersionNameUpdate,
+    VersionSummary,
 )
 
 router = APIRouter(prefix="/presentations", tags=["presentations"])
@@ -248,3 +252,143 @@ async def remove_presentation_collaborator(
             detail="Collaborator not found",
         )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _version_summary(version, author_name: str | None) -> VersionSummary:
+    return VersionSummary(
+        id=version.id,
+        presentation_id=version.presentation_id,
+        author_id=version.author_id,
+        author_name=author_name,
+        version_number=version.version_number,
+        label=version.label,
+        created_at=version.created_at,
+    )
+
+
+@router.get(
+    "/{deck_id}/versions",
+    response_model=list[VersionSummary],
+)
+async def list_presentation_versions(
+    deck_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[VersionSummary]:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    rows = await service.list_versions(db, deck_id)
+    return [_version_summary(v, name) for v, name in rows]
+
+
+@router.post(
+    "/{deck_id}/versions",
+    response_model=VersionSummary,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_presentation_version(
+    deck_id: UUID,
+    payload: VersionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> VersionSummary:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    version = await service.create_version(
+        db,
+        deck_id,
+        current_user.id,
+        owner_deck.content,
+        label=payload.label,
+    )
+    return _version_summary(version, current_user.name)
+
+
+@router.get(
+    "/{deck_id}/versions/{version_id}",
+    response_model=VersionDetail,
+)
+async def get_presentation_version(
+    deck_id: UUID,
+    version_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> VersionDetail:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    row = await service.get_version_with_author(db, version_id, deck_id)
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Version not found",
+        )
+    version, author_name = row
+    return VersionDetail(
+        id=version.id,
+        presentation_id=version.presentation_id,
+        author_id=version.author_id,
+        author_name=author_name,
+        version_number=version.version_number,
+        label=version.label,
+        created_at=version.created_at,
+        content=version.content,
+    )
+
+
+@router.patch(
+    "/{deck_id}/versions/{version_id}",
+    response_model=VersionSummary,
+)
+async def rename_presentation_version(
+    deck_id: UUID,
+    version_id: UUID,
+    payload: VersionNameUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> VersionSummary:
+    owner_deck = await service.get_deck(db, deck_id, current_user.id)
+    if owner_deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Presentation not found",
+        )
+    version = await service.name_version(db, version_id, deck_id, payload.label)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Version not found",
+        )
+    author_row = await service.get_version_with_author(db, version_id, deck_id)
+    author_name = author_row[1] if author_row else None
+    return _version_summary(version, author_name)
+
+
+@router.post(
+    "/{deck_id}/versions/{version_id}/restore",
+    response_model=DeckDetail,
+)
+async def restore_presentation_version(
+    deck_id: UUID,
+    version_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> DeckDetail:
+    deck = await service.restore_version(db, version_id, deck_id, current_user.id)
+    if deck is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Version or presentation not found",
+        )
+    return await _build_detail(db, deck)

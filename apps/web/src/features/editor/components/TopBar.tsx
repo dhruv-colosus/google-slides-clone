@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import StarBorderRoundedIcon from "@mui/icons-material/StarBorderRounded";
 import DriveFileMoveOutlinedIcon from "@mui/icons-material/DriveFileMoveOutlined";
 import CloudDoneOutlinedIcon from "@mui/icons-material/CloudDoneOutlined";
@@ -10,6 +11,7 @@ import CloudOffOutlinedIcon from "@mui/icons-material/CloudOffOutlined";
 import ChatBubbleOutlineOutlinedIcon from "@mui/icons-material/ChatBubbleOutlineOutlined";
 import VideocamOutlinedIcon from "@mui/icons-material/VideocamOutlined";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import HistoryOutlinedIcon from "@mui/icons-material/HistoryOutlined";
 import Tooltip from "@mui/material/Tooltip";
 import Snackbar from "@mui/material/Snackbar";
 import { UserAvatar } from "@/features/auth";
@@ -27,6 +29,10 @@ import { MenuBar } from "./MenuBar";
 import { ShareButton } from "./ShareButton";
 import { SlideshowButton } from "./SlideshowButton";
 import { ShareModal } from "../share/ShareModal";
+import {
+  NameVersionDialog,
+  useCreateVersion,
+} from "@/features/version-history";
 import { useTotalUnresolvedCount } from "../comments/useComments";
 import commentStyles from "../comments/comments.module.css";
 import styles from "../editor.module.css";
@@ -89,6 +95,7 @@ function SaveStatusIndicator() {
 }
 
 export function TopBar() {
+  const router = useRouter();
   const deckId = useEditorDeckId();
   const { deck, commentsPanelOpen } = useEditorState();
   const { renameDeck, toggleCommentsPanel } = useEditorActions();
@@ -96,6 +103,9 @@ export function TopBar() {
   const insertImage = useInsertImage();
   const unreadCommentCount = useTotalUnresolvedCount();
   const [shareOpen, setShareOpen] = useState(false);
+  const [nameVersionOpen, setNameVersionOpen] = useState(false);
+  const [versionToast, setVersionToast] = useState<string | null>(null);
+  const createVersionMutation = useCreateVersion(deckId);
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,7 +130,28 @@ export function TopBar() {
     onPickImageFile: () => fileInputRef.current?.click(),
     onPickSlideFile: () => slideFileInputRef.current?.click(),
     onOpenShare: () => setShareOpen(true),
+    onOpenNameVersion: () => setNameVersionOpen(true),
   });
+
+  const handleSubmitVersionName = useCallback(
+    (label: string) => {
+      createVersionMutation.mutate(
+        { label },
+        {
+          onSuccess: () => {
+            setNameVersionOpen(false);
+            setVersionToast(`Saved version "${label}"`);
+          },
+          onError: (err) => {
+            setVersionToast(
+              err instanceof Error ? err.message : "Failed to save version",
+            );
+          },
+        },
+      );
+    },
+    [createVersionMutation],
+  );
 
   const handleSlideFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -192,6 +223,15 @@ export function TopBar() {
       <div />
 
       <div className={styles.topRight}>
+        <Tooltip title="Version history" placement="bottom">
+          <button
+            className={styles.iconButton}
+            aria-label="Version history"
+            onClick={() => router.push(`/presentation/d/${deckId}/history`)}
+          >
+            <HistoryOutlinedIcon fontSize="small" />
+          </button>
+        </Tooltip>
         <Tooltip
           title={commentsPanelOpen ? "Close comments" : "Open comments"}
           placement="bottom"
@@ -228,11 +268,26 @@ export function TopBar() {
         onClose={() => setShareOpen(false)}
         deckId={deckId}
       />
+      <NameVersionDialog
+        open={nameVersionOpen}
+        title="Name current version"
+        submitLabel="Save"
+        busy={createVersionMutation.isPending}
+        onClose={() => setNameVersionOpen(false)}
+        onSubmit={handleSubmitVersionName}
+      />
       <Snackbar
         open={importToast !== null}
         autoHideDuration={5000}
         onClose={() => setImportToast(null)}
         message={importToast ?? ""}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      />
+      <Snackbar
+        open={versionToast !== null}
+        autoHideDuration={4000}
+        onClose={() => setVersionToast(null)}
+        message={versionToast ?? ""}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       />
     </header>

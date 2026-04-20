@@ -66,6 +66,8 @@ export type MenuActionOptions = {
   onPickSlideFile?: () => void;
   /** Open the Share modal. */
   onOpenShare?: () => void;
+  /** Open the "Name current version" dialog. */
+  onOpenNameVersion?: () => void;
 };
 
 export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
@@ -400,6 +402,9 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
       },
       "file.import.slides": () => options.onPickSlideFile?.(),
       "file.share": () => options.onOpenShare?.(),
+      "file.versionHistory": () =>
+        router.push(`/presentation/d/${deckId}/history`),
+      "file.nameVersion": () => options.onOpenNameVersion?.(),
 
       // ── Edit ────────────────────────────────────────────────
       "edit.undo": () => undo(),

@@ -92,6 +92,7 @@ export function useCreatePresentation() {
 }
 
 export function useSavePresentation(id: string) {
+  const queryClient = useQueryClient();
   return useMutation<
     DeckDetail,
     Error,
@@ -99,6 +100,13 @@ export function useSavePresentation(id: string) {
   >({
     mutationFn: ({ content, title }) =>
       savePresentation(id, content, title),
+    onSuccess: () => {
+      // Versions may have been auto-created server-side; let any open
+      // history panel refetch to show them.
+      queryClient.invalidateQueries({
+        queryKey: ["presentations", id, "versions"],
+      });
+    },
   });
 }
 

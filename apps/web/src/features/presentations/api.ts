@@ -17,6 +17,11 @@ export const presentationEndpoints = {
   collaborators: (id: string) => `${API_URL}/presentations/${id}/collaborators`,
   collaborator: (id: string, email: string) =>
     `${API_URL}/presentations/${id}/collaborators/${encodeURIComponent(email)}`,
+  versions: (id: string) => `${API_URL}/presentations/${id}/versions`,
+  version: (id: string, versionId: string) =>
+    `${API_URL}/presentations/${id}/versions/${versionId}`,
+  restoreVersion: (id: string, versionId: string) =>
+    `${API_URL}/presentations/${id}/versions/${versionId}/restore`,
 };
 
 async function parseOrThrow<T>(res: Response, message: string): Promise<T> {
