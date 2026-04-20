@@ -211,8 +211,8 @@ function ShapeElementView({
 }) {
   const {
     shape,
-    fill: rawFill = shape === "line" || shape === "arrow" ? "transparent" : "#a8c7fa",
-    stroke: rawStroke = shape === "line" || shape === "arrow" ? "#3c4043" : "transparent",
+    fill: rawFill = "transparent",
+    stroke: rawStroke = shape === "line" || shape === "arrow" ? "theme.body" : "transparent",
     strokeWidth = shape === "line" || shape === "arrow" ? 2 : 0,
     radius = 0,
   } = element;
@@ -261,7 +261,7 @@ function ShapeElementView({
   }
   if (shape === "arrow") {
     const arrow = computeArrow(element.w, Math.max(element.h, 2), strokeWidth || 2);
-    const color = stroke === "transparent" ? "#3c4043" : stroke;
+    const color = stroke === "transparent" ? theme.colors.body : stroke;
     return (
       <svg
         {...dataProps}
@@ -298,7 +298,7 @@ function ShapeElementView({
         y1={Math.max(element.h, 2) / 2}
         x2={element.w}
         y2={Math.max(element.h, 2) / 2}
-        stroke={stroke === "transparent" ? "#3c4043" : stroke}
+        stroke={stroke === "transparent" ? theme.colors.body : stroke}
         strokeWidth={strokeWidth || 2}
         strokeLinecap="round"
       />

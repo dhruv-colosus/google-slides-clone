@@ -26,6 +26,8 @@ import { SlideRenderer } from "./SlideRenderer";
 
 const THUMB_WIDTH = 150;
 
+const thumbDomId = (id: SlideId) => `slide-thumb-${id}`;
+
 type MenuState = { slideId: SlideId; x: number; y: number } | null;
 
 function SortableThumbnail({
@@ -74,15 +76,25 @@ function SortableThumbnail({
     onOpenMenu(slide.id, rect.right, rect.bottom);
   };
 
+  const handleClick = (e: React.MouseEvent<HTMLLIElement>) => {
+    onSelect();
+    e.currentTarget.focus();
+  };
+
   return (
     <li
       ref={setNodeRef}
       style={style}
       className={`${styles.thumbRow} ${isDragging ? styles.thumbRowDragging : ""}`}
-      onClick={onSelect}
+      onClick={handleClick}
       onContextMenu={handleContextMenu}
       {...attributes}
       {...listeners}
+      id={thumbDomId(slide.id)}
+      data-slide-id={slide.id}
+      role="option"
+      aria-selected={active}
+      tabIndex={0}
     >
       <span className={styles.thumbIndex}>{index + 1}</span>
       <div
@@ -229,6 +241,47 @@ export function SlideSidebar() {
 
   const canDelete = deck.slides.length > 1;
 
+  const bindListKeys = useCallback(
+    (node: HTMLOListElement | null) => {
+      if (!node) return;
+      const onKey = (e: KeyboardEvent) => {
+        const key = e.key;
+        if (
+          key !== "ArrowUp" &&
+          key !== "ArrowDown" &&
+          key !== "Home" &&
+          key !== "End"
+        ) {
+          return;
+        }
+        const target = e.target as HTMLElement | null;
+        const slideId = target?.dataset?.slideId as SlideId | undefined;
+        if (!slideId) return;
+        e.preventDefault();
+        const ids = deck.slides.map((s) => s.id);
+        const cur = ids.indexOf(slideId);
+        if (cur === -1) return;
+        const next =
+          key === "ArrowUp"
+            ? Math.max(0, cur - 1)
+            : key === "ArrowDown"
+              ? Math.min(ids.length - 1, cur + 1)
+              : key === "Home"
+                ? 0
+                : ids.length - 1;
+        if (next === cur) return;
+        const nextId = ids[next];
+        selectSlide(nextId);
+        queueMicrotask(() => {
+          document.getElementById(thumbDomId(nextId))?.focus();
+        });
+      };
+      node.addEventListener("keydown", onKey);
+      return () => node.removeEventListener("keydown", onKey);
+    },
+    [deck.slides, selectSlide],
+  );
+
   return (
     <aside className={styles.sidebar} aria-label="Slide list">
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
@@ -236,7 +289,13 @@ export function SlideSidebar() {
           items={deck.slides.map((s) => s.id)}
           strategy={verticalListSortingStrategy}
         >
-          <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
+          <ol
+            ref={bindListKeys}
+            role="listbox"
+            aria-label="Slides"
+            aria-activedescendant={active ? thumbDomId(active.id) : undefined}
+            style={{ listStyle: "none", margin: 0, padding: 0 }}
+          >
             {deck.slides.map((slide, idx) => (
               <SortableThumbnail
                 key={slide.id}

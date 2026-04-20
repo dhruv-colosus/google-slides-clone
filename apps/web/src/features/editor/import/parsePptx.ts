@@ -21,6 +21,13 @@ import { parseSpElement } from "./parseSpElement";
 import { parsePicElement } from "./parsePicElement";
 import { parseSlideBackground } from "./parseSlideBackground";
 import {
+  parseSlideContextChain,
+  resolveSolidFillColor,
+  type ThemeContext,
+} from "./parseTheme";
+import type { InheritedTextDefaults } from "./pptxRunsToProseMirror";
+import { pptxFontSizePt } from "./pptxUnits";
+import {
   emptySkipReport,
   recordSkip,
   type ParsedDeck,
@@ -34,6 +41,95 @@ const MAX_GROUP_DEPTH = 10;
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function hasPlaceholder(spOrCxn: Element): boolean {
+  return placeholderKey(spOrCxn) !== null;
+}
+
+function placeholderKey(spOrCxn: Element): string | null {
+  const nvSpPr =
+    firstChildByLocal(spOrCxn, "nvSpPr") ??
+    firstChildByLocal(spOrCxn, "nvCxnSpPr");
+  if (!nvSpPr) return null;
+  const nvPr = firstChildByLocal(nvSpPr, "nvPr");
+  if (!nvPr) return null;
+  const ph = firstChildByLocal(nvPr, "ph");
+  if (!ph) return null;
+  const type = attr(ph, "type");
+  const idx = attr(ph, "idx");
+  if (type) return `type:${type}`;
+  if (idx) return `idx:${idx}`;
+  return "ph:*";
+}
+
+function readLayoutPlaceholderDefaults(
+  layoutSpTree: Element,
+  themeCtx: ThemeContext,
+): Map<string, InheritedTextDefaults> {
+  const out = new Map<string, InheritedTextDefaults>();
+
+  const visit = (container: Element) => {
+    for (let i = 0; i < container.children.length; i++) {
+      const child = container.children[i];
+      const ln = localName(child);
+      if (ln === "sp") {
+        const key = placeholderKey(child);
+        if (key) {
+          const defaults = extractDefaultsFromSp(child, themeCtx);
+          if (defaults) out.set(key, defaults);
+        }
+      } else if (ln === "grpSp") {
+        visit(child);
+      }
+    }
+  };
+  visit(layoutSpTree);
+  return out;
+}
+
+function extractDefaultsFromSp(
+  sp: Element,
+  themeCtx: ThemeContext,
+): InheritedTextDefaults | null {
+  const txBody = firstChildByLocal(sp, "txBody");
+  if (!txBody) return null;
+  const lstStyle = firstChildByLocal(txBody, "lstStyle");
+  if (!lstStyle) return null;
+  const lvl1 = firstChildByLocal(lstStyle, "lvl1pPr");
+  if (!lvl1) return null;
+
+  const out: InheritedTextDefaults = {};
+  const algn = attr(lvl1, "algn");
+  if (algn) {
+    switch (algn) {
+      case "l":
+        out.align = "left";
+        break;
+      case "ctr":
+        out.align = "center";
+        break;
+      case "r":
+        out.align = "right";
+        break;
+      case "just":
+        out.align = "justify";
+        break;
+    }
+  }
+  const defRPr = firstChildByLocal(lvl1, "defRPr");
+  if (defRPr) {
+    const sz = pptxFontSizePt(attr(defRPr, "sz"));
+    if (sz) out.fontSize = sz;
+    const color = resolveSolidFillColor(defRPr, themeCtx);
+    if (color) out.color = color;
+    const latin = firstChildByLocal(defRPr, "latin");
+    if (latin) {
+      const tf = attr(latin, "typeface");
+      if (tf) out.fontFamily = tf;
+    }
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 async function readPresentation(zip: PptxZip): Promise<{
@@ -80,6 +176,9 @@ async function walkSpTree(
   skip: SkipReport,
   depth: number,
   zCounter: { z: number },
+  themeCtx: ThemeContext | null,
+  skipPlaceholders: boolean,
+  placeholderDefaults: Map<string, InheritedTextDefaults> | null,
 ): Promise<SlideElement[]> {
   const elements: SlideElement[] = [];
   if (depth > MAX_GROUP_DEPTH) {
@@ -93,6 +192,12 @@ async function walkSpTree(
     switch (ln) {
       case "sp":
       case "cxnSp": {
+        if (skipPlaceholders && hasPlaceholder(child)) {
+          break;
+        }
+        const phKey = placeholderDefaults ? placeholderKey(child) : null;
+        const inherited =
+          phKey && placeholderDefaults ? placeholderDefaults.get(phKey) ?? null : null;
         const parsed = parseSpElement(
           child,
           rels,
@@ -101,6 +206,8 @@ async function walkSpTree(
           slideIndex,
           skip,
           () => newId("el"),
+          themeCtx,
+          inherited,
         );
         if (parsed.shape) {
           elements.push(parsed.shape);
@@ -153,6 +260,9 @@ async function walkSpTree(
           skip,
           depth + 1,
           zCounter,
+          themeCtx,
+          skipPlaceholders,
+          placeholderDefaults,
         );
         elements.push(...nested);
         break;
@@ -197,12 +307,67 @@ async function parseSlide(
   const root = doc.documentElement;
   const rels = await readRels(zip, partPath);
 
+  const themeCtx = await parseSlideContextChain(zip, partPath, rels);
+
   const cSld = firstChildByLocal(root, "cSld");
-  const background = await parseSlideBackground(cSld, rels, zip, partPath);
+  let background = await parseSlideBackground(
+    cSld,
+    rels,
+    zip,
+    partPath,
+    themeCtx,
+  );
+
+  const zCounter = { z: 1 };
+  const layoutElements: SlideElement[] = [];
+  let placeholderDefaults: Map<string, InheritedTextDefaults> | null = null;
+  if (themeCtx.layoutPartPath) {
+    const layoutText = await zip.readText(themeCtx.layoutPartPath);
+    if (layoutText) {
+      const layoutDoc = parseXml(layoutText);
+      const layoutRoot = layoutDoc.documentElement;
+      const layoutRels = await readRels(zip, themeCtx.layoutPartPath);
+      const layoutCSld = firstChildByLocal(layoutRoot, "cSld");
+
+      if (background.kind === "theme") {
+        background = await parseSlideBackground(
+          layoutCSld,
+          layoutRels,
+          zip,
+          themeCtx.layoutPartPath,
+          themeCtx,
+        );
+      }
+
+      const layoutSpTree = layoutCSld
+        ? firstChildByLocal(layoutCSld, "spTree")
+        : null;
+      if (layoutSpTree) {
+        placeholderDefaults = readLayoutPlaceholderDefaults(
+          layoutSpTree,
+          themeCtx,
+        );
+        const parsedLayout = await walkSpTree(
+          layoutSpTree,
+          layoutRels,
+          zip,
+          themeCtx.layoutPartPath,
+          rescale,
+          slideIndex,
+          skip,
+          0,
+          zCounter,
+          themeCtx,
+          true, // skip placeholders from layout — slide overrides those
+          null,
+        );
+        layoutElements.push(...parsedLayout);
+      }
+    }
+  }
 
   const spTree = cSld ? firstChildByLocal(cSld, "spTree") : null;
-  const zCounter = { z: 1 };
-  const elements = spTree
+  const slideElements = spTree
     ? await walkSpTree(
         spTree,
         rels,
@@ -213,6 +378,9 @@ async function parseSlide(
         skip,
         0,
         zCounter,
+        themeCtx,
+        false,
+        placeholderDefaults,
       )
     : [];
 
@@ -220,7 +388,7 @@ async function parseSlide(
     id: newId("slide"),
     layoutId: "blank",
     background,
-    elements,
+    elements: [...layoutElements, ...slideElements],
   };
 }
 

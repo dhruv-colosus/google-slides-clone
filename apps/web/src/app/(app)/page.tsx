@@ -36,6 +36,7 @@ import {
   type DeckSummary,
 } from "@/features/presentations";
 import { SlideThumbnail } from "@/features/editor/components/SlideThumbnail";
+import { TEMPLATES, TemplateCard } from "@/features/templates";
 import MenuRoundedIcon from "@mui/icons-material/MenuRounded";
 import SearchRoundedIcon from "@mui/icons-material/SearchRounded";
 import AppsRoundedIcon from "@mui/icons-material/AppsRounded";
@@ -481,11 +482,14 @@ export default function DashboardPage() {
               </IconButton>
             </Box>
           </Box>
-          <Box sx={{ display: "flex", gap: 3 }}>
+          <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
             <BlankPresentationCard
               onCreate={handleCreatePresentation}
               disabled={createMutation.isPending}
             />
+            {TEMPLATES.map((template) => (
+              <TemplateCard key={template.id} template={template} />
+            ))}
           </Box>
         </Box>
       </Box>

@@ -723,7 +723,7 @@ export function SlideCanvas() {
                   ...geom,
                   type: "shape",
                   shape: kind,
-                  stroke: "#3c4043",
+                  stroke: "theme.body",
                   strokeWidth: 2,
                 }
               : {
@@ -731,7 +731,7 @@ export function SlideCanvas() {
                   ...geom,
                   type: "shape",
                   shape: kind,
-                  fill: "#a8c7fa",
+                  fill: "theme.accentSoft",
                 };
           } else if (isLinear) {
             const length = dragDist;
@@ -748,7 +748,7 @@ export function SlideCanvas() {
               rotation: Math.round(angle),
               type: "shape",
               shape: kind,
-              stroke: "#3c4043",
+              stroke: "theme.body",
               strokeWidth: 2,
             };
           } else {
@@ -760,7 +760,7 @@ export function SlideCanvas() {
               h: Math.round(Math.max(4, Math.abs(dy))),
               type: "shape",
               shape: kind,
-              fill: "#a8c7fa",
+              fill: "theme.accentSoft",
             };
           }
 

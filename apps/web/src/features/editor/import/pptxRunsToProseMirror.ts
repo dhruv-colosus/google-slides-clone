@@ -7,10 +7,10 @@ import {
   localName,
 } from "./pptxXml";
 import {
-  pptxColorToCss,
   pptxFontSizePt,
   pptxLineSpacingToMultiple,
 } from "./pptxUnits";
+import { resolveSolidFillColor, type ThemeContext } from "./parseTheme";
 
 type Mark = { type: string; attrs?: Record<string, unknown> };
 
@@ -39,17 +39,17 @@ function mapAlign(
   }
 }
 
-function readColorFromSolidFillParent(parent: Element): string | undefined {
-  const fill = firstChildByLocal(parent, "solidFill");
-  if (!fill) return undefined;
-  const srgb = firstChildByLocal(fill, "srgbClr");
-  if (srgb) return pptxColorToCss(attr(srgb, "val"));
-  return undefined;
+function readColorFromSolidFillParent(
+  parent: Element,
+  themeCtx: ThemeContext | null,
+): string | undefined {
+  return resolveSolidFillColor(parent, themeCtx);
 }
 
 function runMarks(
   rPr: Element | null,
   rels: Map<string, { target: string; type: string }>,
+  themeCtx: ThemeContext | null,
 ): Mark[] {
   const marks: Mark[] = [];
   if (!rPr) return marks;
@@ -60,7 +60,7 @@ function runMarks(
   const strike = attr(rPr, "strike");
   if (strike && strike !== "noStrike") marks.push({ type: "strike" });
 
-  const color = readColorFromSolidFillParent(rPr);
+  const color = readColorFromSolidFillParent(rPr, themeCtx);
   const latin = firstChildByLocal(rPr, "latin");
   const fontFamily = latin ? attr(latin, "typeface") ?? undefined : undefined;
   if (color || fontFamily) {
@@ -95,6 +95,8 @@ function paragraphToNode(
     taken?: boolean;
   },
   isFirstParagraph: boolean,
+  themeCtx: ThemeContext | null,
+  inheritedColor: string | undefined,
 ): PMNode {
   const pPr = firstChildByLocal(p, "pPr");
   const align = pPr ? mapAlign(attr(pPr, "algn")) : null;
@@ -139,18 +141,23 @@ function paragraphToNode(
       }
       if (!firstDefaults.taken) {
         const sz = rPr ? pptxFontSizePt(attr(rPr, "sz")) : undefined;
-        const color = rPr ? readColorFromSolidFillParent(rPr) : undefined;
+        const color = rPr
+          ? readColorFromSolidFillParent(rPr, themeCtx)
+          : undefined;
         const latin = rPr ? firstChildByLocal(rPr, "latin") : null;
         const fontFamily = latin
           ? attr(latin, "typeface") ?? undefined
           : undefined;
         if (sz) firstDefaults.fontSize = sz;
         if (color) firstDefaults.color = color;
+        else if (inheritedColor && !firstDefaults.color) {
+          firstDefaults.color = inheritedColor;
+        }
         if (fontFamily) firstDefaults.fontFamily = fontFamily;
         firstDefaults.taken = true;
       }
       if (text === "") continue;
-      const marks = runMarks(rPr, rels);
+      const marks = runMarks(rPr, rels, themeCtx);
       children.push({
         type: "text",
         text,
@@ -180,9 +187,18 @@ function paragraphToNode(
   return node;
 }
 
+export type InheritedTextDefaults = {
+  color?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  align?: "left" | "center" | "right" | "justify";
+};
+
 export function parseTextFrame(
   txBody: Element,
   rels: Map<string, { target: string; type: string }>,
+  themeCtx: ThemeContext | null = null,
+  inherited: InheritedTextDefaults | null = null,
 ): { block: Partial<TextBlock>; contentJson: PMNode } {
   const paragraphs = childrenByLocal(txBody, "p");
   const firstDefaults: {
@@ -194,6 +210,13 @@ export function parseTextFrame(
     taken?: boolean;
   } = {};
 
+  if (inherited) {
+    if (inherited.align) firstDefaults.align = inherited.align;
+    if (inherited.fontSize) firstDefaults.fontSize = inherited.fontSize;
+    if (inherited.fontFamily) firstDefaults.fontFamily = inherited.fontFamily;
+    if (inherited.color) firstDefaults.color = inherited.color;
+  }
+
   // lstStyle can carry inherited defaults — use as fallback for fontSize/color.
   const lstStyle = firstChildByLocal(txBody, "lstStyle");
   if (lstStyle) {
@@ -201,8 +224,9 @@ export function parseTextFrame(
     if (lvl1) {
       const defRPr = firstChildByLocal(lvl1, "defRPr");
       if (defRPr) {
-        firstDefaults.fontSize = pptxFontSizePt(attr(defRPr, "sz"));
-        const color = readColorFromSolidFillParent(defRPr);
+        const sz = pptxFontSizePt(attr(defRPr, "sz"));
+        if (sz) firstDefaults.fontSize = sz;
+        const color = readColorFromSolidFillParent(defRPr, themeCtx);
         if (color) firstDefaults.color = color;
         const latin = firstChildByLocal(defRPr, "latin");
         if (latin) {
@@ -217,7 +241,14 @@ export function parseTextFrame(
     paragraphs.length === 0
       ? [{ type: "paragraph" }]
       : paragraphs.map((p, idx) =>
-          paragraphToNode(p, rels, firstDefaults, idx === 0),
+          paragraphToNode(
+            p,
+            rels,
+            firstDefaults,
+            idx === 0,
+            themeCtx,
+            inherited?.color,
+          ),
         );
 
   const block: Partial<TextBlock> = {};

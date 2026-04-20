@@ -9,10 +9,19 @@ import {
   childrenByLocal,
   firstChildByLocal,
 } from "./pptxXml";
-import { emuToPx, pptxColorToCss, pptxRotToDeg } from "./pptxUnits";
+import { emuToPx, pptxRotToDeg } from "./pptxUnits";
 import type { RelsMap } from "./pptxZip";
-import { parseTextFrame, txBodyHasText } from "./pptxRunsToProseMirror";
+import {
+  parseTextFrame,
+  txBodyHasText,
+  type InheritedTextDefaults,
+} from "./pptxRunsToProseMirror";
 import { recordSkip, type SkipReport } from "./types";
+import {
+  resolveColorNode,
+  resolveSolidFillColor,
+  type ThemeContext,
+} from "./parseTheme";
 
 type Rescale = (n: number, axis: "x" | "y") => number;
 
@@ -37,7 +46,10 @@ function readGeometry(
   };
 }
 
-function readFillStroke(spPr: Element | null): {
+function readFillStroke(
+  spPr: Element | null,
+  themeCtx: ThemeContext | null,
+): {
   fill?: string;
   stroke?: string;
   strokeWidth?: number;
@@ -57,27 +69,15 @@ function readFillStroke(spPr: Element | null): {
   const noFill = firstChildByLocal(spPr, "noFill");
   if (noFill) out.hasNoFill = true;
 
-  const solid = firstChildByLocal(spPr, "solidFill");
-  if (solid) {
-    const srgb = firstChildByLocal(solid, "srgbClr");
-    if (srgb) {
-      const c = pptxColorToCss(attr(srgb, "val"));
-      if (c) out.fill = c;
-    }
-  }
+  const fill = resolveSolidFillColor(spPr, themeCtx);
+  if (fill) out.fill = fill;
 
   const ln = firstChildByLocal(spPr, "ln");
   if (ln) {
     const w = attr(ln, "w");
     if (w) out.strokeWidth = Math.max(1, Math.round(emuToPx(w)));
-    const lnSolid = firstChildByLocal(ln, "solidFill");
-    if (lnSolid) {
-      const srgb = firstChildByLocal(lnSolid, "srgbClr");
-      if (srgb) {
-        const c = pptxColorToCss(attr(srgb, "val"));
-        if (c) out.stroke = c;
-      }
-    }
+    const stroke = resolveSolidFillColor(ln, themeCtx);
+    if (stroke) out.stroke = stroke;
     const tail = firstChildByLocal(ln, "tailEnd");
     const head = firstChildByLocal(ln, "headEnd");
     const tailType = tail ? attr(tail, "type") : null;
@@ -91,6 +91,10 @@ function readFillStroke(spPr: Element | null): {
   }
   return out;
 }
+
+// Silence unused-import warning: resolveColorNode is exported for callers
+// that parse color nodes directly.
+void resolveColorNode;
 
 function mapPrstToShape(prst: string | null): ShapeKind | "other" | null {
   if (!prst) return null;
@@ -123,6 +127,8 @@ export function parseSpElement(
   slideIndex: number,
   skip: SkipReport,
   idGen: () => string,
+  themeCtx: ThemeContext | null = null,
+  inheritedText: InheritedTextDefaults | null = null,
 ): ParsedSp {
   const spPr = firstChildByLocal(sp, "spPr");
   const { x, y, w, h, rotation } = readGeometry(spPr, rescale);
@@ -130,7 +136,7 @@ export function parseSpElement(
   const prst = prstGeom ? attr(prstGeom, "prst") : null;
   const mappedShape = mapPrstToShape(prst);
 
-  const fillStroke = readFillStroke(spPr);
+  const fillStroke = readFillStroke(spPr, themeCtx);
   const isArrow =
     (mappedShape === "line" && fillStroke.arrowEnd) ||
     prst === "straightConnector1";
@@ -194,7 +200,12 @@ export function parseSpElement(
   }
 
   if (txBody && hasText) {
-    const { block, contentJson } = parseTextFrame(txBody, rels);
+    const { block, contentJson } = parseTextFrame(
+      txBody,
+      rels,
+      themeCtx,
+      inheritedText,
+    );
     const textBlock: TextBlock = {};
     if (block.align) textBlock.align = block.align;
     if (block.fontSize) textBlock.fontSize = block.fontSize;

@@ -52,6 +52,14 @@ export type CommentComposerState = {
   editingCommentId?: string;
 };
 
+export type ToastState = {
+  // Monotonic key bumped on every show(), so re-firing the same message still
+  // reopens a closing Snackbar.
+  key: number;
+  message: string | null;
+  undoable: boolean;
+};
+
 export type UiState = {
   selection: Selection;
   tool: ToolMode;
@@ -64,6 +72,7 @@ export type UiState = {
   presenterBlank: PresenterBlank;
   commentsPanelOpen: boolean;
   commentComposer: CommentComposerState | null;
+  toast: ToastState;
 };
 
 export type EditorState = UiState & { deck: Deck; readOnly: boolean };
@@ -85,7 +94,9 @@ type UiAction =
   | { type: "setCommentsPanelOpen"; open: boolean }
   | { type: "toggleCommentsPanel" }
   | { type: "openCommentComposer"; slideId: SlideId; editingCommentId?: string }
-  | { type: "closeCommentComposer" };
+  | { type: "closeCommentComposer" }
+  | { type: "showToast"; message: string; undoable?: boolean }
+  | { type: "dismissToast" };
 
 function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -189,6 +200,17 @@ function uiReducer(state: UiState, action: UiAction): UiState {
       };
     case "closeCommentComposer":
       return { ...state, commentComposer: null };
+    case "showToast":
+      return {
+        ...state,
+        toast: {
+          key: state.toast.key + 1,
+          message: action.message,
+          undoable: action.undoable ?? false,
+        },
+      };
+    case "dismissToast":
+      return { ...state, toast: { ...state.toast, message: null } };
     default:
       return state;
   }
@@ -254,6 +276,7 @@ export function EditorProvider({
     presenterBlank: "none" as const,
     commentsPanelOpen: false,
     commentComposer: null,
+    toast: { key: 0, message: null, undoable: false },
   }));
 
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
@@ -418,6 +441,11 @@ export function useEditorActions() {
     (slideId: SlideId, layoutId: string, elements: SlideElement[]) => {
       provider.applyLayout(slideId, layoutId, elements);
       uiDispatch({ type: "select", slideId, elementIds: [] });
+      uiDispatch({
+        type: "showToast",
+        message: "Layout applied",
+        undoable: true,
+      });
     },
     [provider, uiDispatch],
   );
@@ -575,6 +603,20 @@ export function useEditorActions() {
     [uiDispatch],
   );
 
+  const showToast = useCallback(
+    (message: string, options?: { undoable?: boolean }) =>
+      uiDispatch({
+        type: "showToast",
+        message,
+        undoable: options?.undoable,
+      }),
+    [uiDispatch],
+  );
+  const dismissToast = useCallback(
+    () => uiDispatch({ type: "dismissToast" }),
+    [uiDispatch],
+  );
+
   return {
     selectSlide,
     selectElements,
@@ -610,6 +652,12 @@ export function useEditorActions() {
     setCommentsPanelOpen,
     openCommentComposer,
     closeCommentComposer,
+    showToast,
+    dismissToast,
   };
+}
+
+export function useToast(): ToastState {
+  return useEditor().ui.toast;
 }
 

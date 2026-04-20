@@ -7,6 +7,7 @@ import { Toolbar } from "./Toolbar";
 import { SlideSidebar } from "./SlideSidebar";
 import { SlideCanvas } from "./SlideCanvas";
 import { PresenterShell } from "./PresenterShell";
+import { UndoableToast } from "./UndoableToast";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useAutoSave } from "../hooks/useAutoSave";
 import { useEditorState, useSetSaveState } from "../state/EditorContext";
@@ -61,6 +62,7 @@ export function EditorShell() {
         </div>
       </div>
       {showCommentsPanel && <CommentsPanel />}
+      <UndoableToast />
     </div>
   );
 }

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import User
-from app.auth.schemas import UserOut
+from app.auth.schemas import GoogleUserInfo, UserOut
 from app.auth.service import exchange_code_for_userinfo, upsert_user
 from app.core.config import get_settings
 from app.core.security import create_access_token
@@ -80,3 +80,37 @@ def logout(response: Response) -> dict:
         domain=settings.cookie_domain,
     )
     return {"message": "Logged out"}
+
+
+@router.post("/test-login", response_model=UserOut)
+async def test_login(
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if not settings.test_auth_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
+        )
+
+    info = GoogleUserInfo(
+        sub=f"test-auth|{settings.test_auth_email}",
+        email=settings.test_auth_email,
+        name=settings.test_auth_name,
+        picture=None,
+        email_verified=True,
+    )
+    user = await upsert_user(db, info)
+    token = create_access_token(subject=user.id)
+
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+        domain=settings.cookie_domain,
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+    return user

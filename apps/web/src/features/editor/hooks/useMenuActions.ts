@@ -163,8 +163,8 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
         w,
         h,
         z: nextZ(),
-        fill: "#e8eaed",
-        stroke: "#5f6368",
+        fill: "theme.accentSoft",
+        stroke: "theme.muted",
         strokeWidth: 1,
       };
       addElement(slide.id, el);
@@ -182,7 +182,7 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
         w: 240,
         h: 2,
         z: nextZ(),
-        stroke: "#202124",
+        stroke: "theme.title",
         strokeWidth: 2,
       };
       addElement(slide.id, el);
@@ -204,8 +204,8 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
         text: {
           align: "left",
           fontSize: 18,
-          fontFamily: "Arial",
-          color: "#202124",
+          fontFamily: "theme.body",
+          color: "theme.body",
           placeholder: "Click to add text",
         },
       };
@@ -546,8 +546,8 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
           updateTextBlock(slideId, firstText.id, {
             align: "left",
             fontSize: 18,
-            color: "#202124",
-            fontFamily: "Arial",
+            color: "theme.body",
+            fontFamily: "theme.body",
             lineHeight: 1.2,
           });
         }

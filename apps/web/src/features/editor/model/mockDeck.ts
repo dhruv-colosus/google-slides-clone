@@ -30,6 +30,8 @@ export function createMockDeck(id: string): Deck {
             text: {
               align: "center",
               fontSize: 48,
+              color: "theme.title",
+              fontFamily: "theme.heading",
               placeholder: "Click to add title",
             },
           },
@@ -44,7 +46,8 @@ export function createMockDeck(id: string): Deck {
             text: {
               align: "center",
               fontSize: 22,
-              color: "#5f6368",
+              color: "theme.muted",
+              fontFamily: "theme.body",
               placeholder: "Click to add subtitle",
             },
           },

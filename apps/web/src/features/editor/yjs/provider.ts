@@ -9,7 +9,7 @@
  */
 
 import * as Y from "yjs";
-import { ySyncPluginKey } from "y-prosemirror";
+import { ySyncPluginKey, yXmlFragmentToProsemirrorJSON } from "y-prosemirror";
 import type {
   BaseElement,
   Comment,
@@ -44,6 +44,65 @@ import {
 
 export const LOCAL_ORIGIN = "local";
 export const COMMENTS_ORIGIN = "comments";
+
+/**
+ * Earlier versions persisted creation-time defaults as literal hex strings
+ * (e.g. "#202124"), which blocked theme swaps from reaching them. New code
+ * uses theme tokens ("theme.title"). This upgrades legacy defaults so theme
+ * changes cascade through already-saved decks.
+ */
+const LEGACY_DEFAULT_TEXT_COLORS: Record<string, string> = {
+  "#202124": "theme.title",
+  "#3c4043": "theme.body",
+  "#5f6368": "theme.muted",
+};
+const LEGACY_DEFAULT_FONT_FAMILIES: Record<string, string> = {
+  Arial: "theme.body",
+};
+const LEGACY_DEFAULT_SHAPE_FILLS: Record<string, string> = {
+  "#e8eaed": "theme.accentSoft",
+  "#a8c7fa": "theme.accentSoft",
+};
+const LEGACY_DEFAULT_SHAPE_STROKES: Record<string, string> = {
+  "#202124": "theme.title",
+  "#3c4043": "theme.body",
+  "#5f6368": "theme.muted",
+};
+
+function normalizeLegacyDefaults(deck: Deck): Deck {
+  const slides = deck.slides.map((slide) => {
+    const elements = slide.elements.map((el) => {
+      if (el.type === "text") {
+        const text = el.text;
+        const nextColor = text.color && LEGACY_DEFAULT_TEXT_COLORS[text.color];
+        const nextFont =
+          text.fontFamily && LEGACY_DEFAULT_FONT_FAMILIES[text.fontFamily];
+        if (!nextColor && !nextFont) return el;
+        return {
+          ...el,
+          text: {
+            ...text,
+            ...(nextColor ? { color: nextColor } : null),
+            ...(nextFont ? { fontFamily: nextFont } : null),
+          },
+        };
+      }
+      if (el.type === "shape") {
+        const nextFill = el.fill && LEGACY_DEFAULT_SHAPE_FILLS[el.fill];
+        const nextStroke = el.stroke && LEGACY_DEFAULT_SHAPE_STROKES[el.stroke];
+        if (!nextFill && !nextStroke) return el;
+        return {
+          ...el,
+          ...(nextFill ? { fill: nextFill } : null),
+          ...(nextStroke ? { stroke: nextStroke } : null),
+        };
+      }
+      return el;
+    });
+    return { ...slide, elements };
+  });
+  return { ...deck, slides };
+}
 
 export type ElementPatch = Partial<BaseElement> & {
   fill?: string;
@@ -131,6 +190,33 @@ function cloneElementData(el: SlideElement): SlideElement {
   return JSON.parse(JSON.stringify(el));
 }
 
+function isEmptyPlaceholderYElement(yEl: YElement): boolean {
+  if (yEl.get("type") !== "text") return false;
+  const text = yEl.get("text") as TextBlock | undefined;
+  if (!text?.placeholder) return false;
+  const frag = yEl.get("doc");
+  if (!(frag instanceof Y.XmlFragment)) return true;
+  if (frag.length === 0) return true;
+  try {
+    const json = yXmlFragmentToProsemirrorJSON(frag);
+    return extractPmText(json).trim().length === 0;
+  } catch {
+    return true;
+  }
+}
+
+function extractPmText(node: unknown): string {
+  if (!node || typeof node !== "object") return "";
+  const n = node as { text?: unknown; content?: unknown };
+  if (typeof n.text === "string") return n.text;
+  if (Array.isArray(n.content)) {
+    let out = "";
+    for (const child of n.content) out += extractPmText(child);
+    return out;
+  }
+  return "";
+}
+
 function applyElementPatch(el: YElement, patch: ElementPatch) {
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
@@ -153,7 +239,7 @@ export class InMemoryDocProvider implements DocProvider {
 
   constructor(initialDeck: Deck) {
     this.doc = new Y.Doc();
-    hydrateDoc(this.doc, initialDeck);
+    hydrateDoc(this.doc, normalizeLegacyDefaults(initialDeck));
 
     const meta = this.doc.getMap("meta");
     const slides = this.doc.getArray("slides");
@@ -175,6 +261,7 @@ export class InMemoryDocProvider implements DocProvider {
 
   private handleStackChange = () => {
     this.version++;
+    this.cachedVersion = -1;
     this.listeners.forEach((fn) => fn());
   };
 
@@ -196,10 +283,12 @@ export class InMemoryDocProvider implements DocProvider {
   };
 
   undo = () => {
+    this.undoManager.stopCapturing();
     this.undoManager.undo();
   };
 
   redo = () => {
+    this.undoManager.stopCapturing();
     this.undoManager.redo();
   };
 
@@ -240,8 +329,24 @@ export class InMemoryDocProvider implements DocProvider {
     const els = slide.get("elements") as Y.Array<YElement>;
     this.transact(() => {
       slide.set("layoutId", layoutId);
-      if (els.length) els.delete(0, els.length);
-      if (elements.length) els.insert(0, elements.map(elementToYMap));
+
+      // Smart merge: drop empty (never-edited) placeholders, keep user content.
+      for (let i = els.length - 1; i >= 0; i--) {
+        if (isEmptyPlaceholderYElement(els.get(i))) els.delete(i, 1);
+      }
+
+      // Bump kept user elements above the new layout's placeholders so user
+      // content stays visible on top after the layout change.
+      const maxNewZ = elements.reduce((m, e) => Math.max(m, e.z), 0);
+      if (maxNewZ > 0) {
+        for (let i = 0; i < els.length; i++) {
+          const kept = els.get(i);
+          const curZ = (kept.get("z") as number) ?? 0;
+          kept.set("z", curZ + maxNewZ);
+        }
+      }
+
+      if (elements.length) els.insert(els.length, elements.map(elementToYMap));
     });
   };
 

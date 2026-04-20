@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     cookie_samesite: str = "lax"
 
+    test_auth_enabled: bool = False
+    test_auth_email: str = "playwright-e2e@example.com"
+    test_auth_name: str = "Playwright Test"
+
 
 @lru_cache
 def get_settings() -> Settings:

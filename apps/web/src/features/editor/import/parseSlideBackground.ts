@@ -1,15 +1,16 @@
 import type { SlideBackground } from "../model/types";
 import { attr, firstChildByLocal } from "./pptxXml";
-import { pptxColorToCss } from "./pptxUnits";
 import type { PptxZip, RelsMap } from "./pptxZip";
 import { resolveRelTarget } from "./pptxZip";
 import { bytesToDataUrl, mimeFromPath } from "./mediaUtils";
+import { resolveSolidFillColor, type ThemeContext } from "./parseTheme";
 
 export async function parseSlideBackground(
   cSld: Element | null,
   rels: RelsMap,
   zip: PptxZip,
   slidePartPath: string,
+  themeCtx: ThemeContext | null = null,
 ): Promise<SlideBackground> {
   if (!cSld) return { kind: "theme" };
   const bg = firstChildByLocal(cSld, "bg");
@@ -17,12 +18,8 @@ export async function parseSlideBackground(
 
   const bgPr = firstChildByLocal(bg, "bgPr");
   if (bgPr) {
-    const solid = firstChildByLocal(bgPr, "solidFill");
-    if (solid) {
-      const srgb = firstChildByLocal(solid, "srgbClr");
-      const color = pptxColorToCss(srgb ? attr(srgb, "val") : null);
-      if (color) return { kind: "solid", color };
-    }
+    const color = resolveSolidFillColor(bgPr, themeCtx);
+    if (color) return { kind: "solid", color };
     const blipFill = firstChildByLocal(bgPr, "blipFill");
     if (blipFill) {
       const blip = firstChildByLocal(blipFill, "blip");
