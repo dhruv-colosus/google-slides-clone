@@ -53,7 +53,7 @@ export function NameVersionDialog({
               onSubmit(trimmed);
             }
           }}
-          inputProps={{ maxLength: 200 }}
+          slotProps={{ htmlInput: { maxLength: 200 } }}
         />
       </DialogContent>
       <DialogActions>
