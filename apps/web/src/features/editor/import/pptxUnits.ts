@@ -23,14 +23,18 @@ export const pptxFontSizePt = (sz: string | null | undefined): number | undefine
   return Number.isFinite(n) && n > 0 ? n / 100 : undefined;
 };
 
-/** PPTX srgbClr values have no `#` prefix; normalize to CSS hex. */
+/**
+ * PPTX srgbClr values have no `#` prefix; normalize to CSS hex. Preserves the
+ * original case (uppercase/lowercase) of the hex digits so round-trip export
+ * matches the author's input byte-for-byte.
+ */
 export const pptxColorToCss = (
   hex: string | null | undefined,
 ): string | undefined => {
   if (!hex) return undefined;
   const clean = hex.replace(/^#/, "").trim();
   if (!/^[0-9a-fA-F]{6}$/.test(clean)) return undefined;
-  return `#${clean.toLowerCase()}`;
+  return `#${clean}`;
 };
 
 /**

@@ -10,8 +10,10 @@ import { PresenterShell } from "./PresenterShell";
 import { UndoableToast } from "./UndoableToast";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useAutoSave } from "../hooks/useAutoSave";
-import { useEditorState, useSetSaveState } from "../state/EditorContext";
+import { useEditorActions, useEditorState, useSetSaveState } from "../state/EditorContext";
 import { CommentsPanel } from "../comments";
+import { HeaderFooterDialog } from "./HeaderFooterDialog";
+import { PageSetupDialog } from "./PageSetupDialog";
 import styles from "../editor.module.css";
 
 function AutoSaveController() {
@@ -21,7 +23,8 @@ function AutoSaveController() {
 }
 
 export function EditorShell() {
-  const { presenting, commentsPanelOpen, readOnly } = useEditorState();
+  const { presenting, commentsPanelOpen, readOnly, headerFooterDialogOpen, pageSetupDialogOpen, deck } = useEditorState();
+  const { closeHeaderFooterDialog, updateMaster, closePageSetupDialog, setPageSize } = useEditorActions();
   const bindShortcuts = useKeyboardShortcuts();
   const setShellRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -63,6 +66,21 @@ export function EditorShell() {
       </div>
       {showCommentsPanel && <CommentsPanel />}
       <UndoableToast />
+      {headerFooterDialogOpen && (
+        <HeaderFooterDialog
+          initialMaster={deck.meta.master}
+          onApply={updateMaster}
+          onClose={closeHeaderFooterDialog}
+        />
+      )}
+      {pageSetupDialogOpen && (
+        <PageSetupDialog
+          initialWidth={deck.meta.pageWidth}
+          initialHeight={deck.meta.pageHeight}
+          onApply={setPageSize}
+          onClose={closePageSetupDialog}
+        />
+      )}
     </div>
   );
 }

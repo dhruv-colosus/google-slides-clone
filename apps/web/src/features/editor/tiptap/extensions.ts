@@ -7,7 +7,6 @@
  */
 
 import { StarterKit } from "@tiptap/starter-kit";
-import { Underline } from "@tiptap/extension-underline";
 import { TextAlign } from "@tiptap/extension-text-align";
 import {
   TextStyle,
@@ -35,7 +34,6 @@ function buildSchemaExtensions(): AnyExtension[] {
       undoRedo: false,
       link: false,
     }),
-    Underline,
     TextStyle,
     Color,
     FontFamily,
@@ -63,6 +61,8 @@ export function buildTextExtensions({
     Placeholder.configure({
       placeholder: placeholder ?? "",
       emptyEditorClass: "is-editor-empty",
+      showOnlyWhenEditable: false,
+      showOnlyCurrent: false,
     }),
     Collaboration.configure({
       fragment,
@@ -76,6 +76,57 @@ export function getTextSchema(): Schema {
   if (_textSchema) return _textSchema;
   _textSchema = getSchema(buildSchemaExtensions());
   return _textSchema;
+}
+
+/**
+ * Per-cell editor schema — paragraphs + inline text marks. Lists, headings,
+ * code blocks, quotes, rules and the Tiptap table extensions are all
+ * intentionally omitted: cells are short prose, not nested documents, and the
+ * table geometry is owned by the outer CSS grid, not ProseMirror.
+ */
+function buildTableCellSchemaExtensions(): AnyExtension[] {
+  return [
+    StarterKit.configure({
+      undoRedo: false,
+      link: false,
+      bulletList: false,
+      orderedList: false,
+      listItem: false,
+      blockquote: false,
+      codeBlock: false,
+      heading: false,
+      horizontalRule: false,
+    }),
+    TextStyle,
+    Color,
+    FontFamily,
+    FontSize,
+    LineHeight,
+    TextAlign.configure({
+      types: ["paragraph"],
+      alignments: ["left", "center", "right", "justify"],
+    }),
+    Highlight.configure({ multicolor: true }),
+  ];
+}
+
+export function buildTableCellExtensions({
+  fragment,
+}: {
+  fragment: Y.XmlFragment;
+}): AnyExtension[] {
+  return [
+    ...buildTableCellSchemaExtensions(),
+    Collaboration.configure({ fragment }),
+  ];
+}
+
+let _tableCellSchema: Schema | null = null;
+
+export function getTableCellSchema(): Schema {
+  if (_tableCellSchema) return _tableCellSchema;
+  _tableCellSchema = getSchema(buildTableCellSchemaExtensions());
+  return _tableCellSchema;
 }
 
 export const FONT_FAMILIES = [

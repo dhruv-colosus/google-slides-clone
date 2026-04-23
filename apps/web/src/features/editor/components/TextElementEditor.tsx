@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
+import * as Y from "yjs";
 import { buildTextExtensions } from "../tiptap/extensions";
 import { useDocProvider, useActiveEditorRegistry } from "../state/EditorContext";
 import type { ElementId, SlideId, TextElement } from "../model/types";
@@ -73,6 +74,18 @@ export function TextElementEditor({
   const editorRef = useRef<Editor | null>(null);
   editorRef.current = editor;
 
+  const [isEmpty, setIsEmpty] = useState(true);
+  useEffect(() => {
+    if (!fragment) {
+      setIsEmpty(true);
+      return;
+    }
+    const check = () => setIsEmpty(isFragmentEmpty(fragment));
+    check();
+    fragment.observeDeep(check);
+    return () => fragment.unobserveDeep(check);
+  }, [fragment]);
+
   useEffect(() => {
     if (!editor) return;
     editor.setEditable(editing);
@@ -124,7 +137,7 @@ export function TextElementEditor({
     fontFamily: resolveFontFamily(text.fontFamily, theme),
     lineHeight: text.lineHeight,
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent:
       align === "center"
         ? "center"
@@ -149,6 +162,51 @@ export function TextElementEditor({
       onContextMenu={handleContextMenu}
     >
       <EditorContent editor={editor} className={styles.tiptapWrap} />
+      {!editing && isEmpty && text.placeholder ? (
+        <div
+          aria-hidden
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: style.justifyContent,
+            padding: "0 12px",
+            color: "currentColor",
+            opacity: 0.55,
+            pointerEvents: "none",
+            userSelect: "none",
+            fontSize: text.fontSize,
+            fontFamily: resolveFontFamily(text.fontFamily, theme),
+            lineHeight: text.lineHeight,
+            textAlign: align,
+          }}
+        >
+          {text.placeholder}
+        </div>
+      ) : null}
     </div>
   );
+}
+
+function isFragmentEmpty(fragment: Y.XmlFragment): boolean {
+  let empty = true;
+  fragment.forEach((child) => {
+    if (!empty) return;
+    if (child instanceof Y.XmlText) {
+      if (child.toString().length > 0) empty = false;
+      return;
+    }
+    if (child instanceof Y.XmlElement) {
+      if (child.length === 0) return;
+      child.forEach((grand) => {
+        if (grand instanceof Y.XmlText && grand.toString().length > 0) {
+          empty = false;
+        } else if (grand instanceof Y.XmlElement) {
+          empty = false;
+        }
+      });
+    }
+  });
+  return empty;
 }

@@ -13,6 +13,7 @@
 
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type {
+  DeckMaster,
   ElementId,
   ImageElement,
   ShapeElement,
@@ -22,6 +23,8 @@ import type {
 } from "../model/types";
 import { TextElementEditor } from "./TextElementEditor";
 import { TextElementPreview } from "./TextElementPreview";
+import { ShapeTextLayer, ShapeTextPreview } from "./ShapeTextLayer";
+import { TableElementEditor, TableElementPreview } from "./TableElementView";
 import { computeArrow } from "../shapes/arrow-geometry";
 import {
   getTheme,
@@ -36,6 +39,8 @@ type RendererProps = {
   pageWidth: number;
   pageHeight: number;
   themeId?: string;
+  master?: DeckMaster;
+  slideNumber?: number;
   interactive?: boolean;
   selectedIds?: ElementId[];
   editingElementId?: ElementId | null;
@@ -53,6 +58,8 @@ export function SlideRenderer({
   pageWidth,
   pageHeight,
   themeId,
+  master,
+  slideNumber,
   interactive = true,
   selectedIds,
   editingElementId,
@@ -81,6 +88,26 @@ export function SlideRenderer({
       onMouseDown={onBackgroundMouseDown}
       onContextMenu={onBackgroundContextMenu}
     >
+      {master?.titleText && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: 0,
+            right: 0,
+            textAlign: "center",
+            fontSize: Math.max(10, pageWidth * 0.013),
+            color: "rgba(0,0,0,0.22)",
+            pointerEvents: "none",
+            userSelect: "none",
+            zIndex: 0,
+            fontFamily: theme.fonts.body,
+            letterSpacing: "0.02em",
+          }}
+        >
+          {master.titleText}
+        </div>
+      )}
       {slide.elements
         .slice()
         .sort((a, b) => a.z - b.z)
@@ -100,6 +127,91 @@ export function SlideRenderer({
             onContextMenu={onElementContextMenu}
           />
         ))}
+      {(master?.footer || master?.showSlideNumber || master?.showDate) && (
+        <MasterFooterBar
+          master={master}
+          theme={theme}
+          pageWidth={pageWidth}
+          slideNumber={slideNumber}
+        />
+      )}
+    </div>
+  );
+}
+
+function formatMasterDate(): string {
+  try {
+    return new Date().toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return new Date().toDateString();
+  }
+}
+
+function MasterFooterBar({
+  master,
+  theme,
+  pageWidth,
+  slideNumber,
+}: {
+  master: DeckMaster;
+  theme: Theme;
+  pageWidth: number;
+  slideNumber?: number;
+}) {
+  const color = resolveColor("theme.muted", theme) ?? "#888";
+  const fontSize = Math.max(9, pageWidth * 0.011);
+  const height = Math.max(20, pageWidth * 0.029);
+  const sideStyle = {
+    minWidth: 0,
+    padding: `0 ${Math.max(8, pageWidth * 0.012)}px`,
+    whiteSpace: "nowrap" as const,
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    flex: "0 0 auto" as const,
+  };
+  return (
+    <div
+      style={{
+        position: "absolute",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height,
+        display: "flex",
+        alignItems: "center",
+        fontSize,
+        color,
+        pointerEvents: "none",
+        userSelect: "none",
+        zIndex: 9999,
+        borderTop: "1px solid rgba(0,0,0,0.07)",
+        background: "rgba(255,255,255,0.82)",
+        backdropFilter: "blur(2px)",
+        fontFamily: theme.fonts.body,
+      }}
+    >
+      <div style={{ ...sideStyle, textAlign: "left" }}>
+        {master.showDate ? formatMasterDate() : ""}
+      </div>
+      <div
+        style={{
+          flex: 1,
+          textAlign: "center",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          padding: "0 8px",
+        }}
+      >
+        {master.footer ?? ""}
+      </div>
+      <div style={{ ...sideStyle, textAlign: "right" }}>
+        {master.showSlideNumber && slideNumber ? slideNumber : ""}
+      </div>
     </div>
   );
 }
@@ -178,7 +290,12 @@ function ElementView({
       return (
         <ShapeElementView
           element={element}
+          slideId={slideId}
           theme={theme}
+          interactive={interactive}
+          selected={selected}
+          editing={editing}
+          onStartEditing={onStartEditing}
           dataProps={commonDataProps}
         />
       );
@@ -188,6 +305,34 @@ function ElementView({
           element={element}
           dataProps={commonDataProps}
           onDoubleClick={handleImageDoubleClick}
+        />
+      );
+    case "table":
+      if (!interactive) {
+        return (
+          <TableElementPreview
+            element={element}
+            dataProps={{
+              "data-element-id": element.id,
+              "data-selected": selected ? "true" : undefined,
+            }}
+          />
+        );
+      }
+      return (
+        <TableElementEditor
+          element={element}
+          slideId={slideId}
+          interactive={interactive}
+          selected={selected}
+          editing={editing}
+          onStartEditing={onStartEditing}
+          onMouseDown={onMouseDown}
+          onContextMenu={onContextMenu}
+          dataProps={{
+            "data-element-id": element.id,
+            "data-selected": selected ? "true" : undefined,
+          }}
         />
       );
   }
@@ -202,11 +347,21 @@ type DataProps = {
 
 function ShapeElementView({
   element,
+  slideId,
   theme,
+  interactive,
+  selected,
+  editing,
+  onStartEditing,
   dataProps,
 }: {
   element: ShapeElement;
+  slideId: SlideId;
   theme: Theme;
+  interactive: boolean;
+  selected: boolean;
+  editing: boolean;
+  onStartEditing?: (elementId: ElementId) => void;
   dataProps: DataProps;
 }) {
   const {
@@ -227,6 +382,21 @@ function ShapeElementView({
     cursor: "move",
     transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
   };
+  const hasText = element.text !== undefined;
+  const textLayer = hasText ? (
+    interactive ? (
+      <ShapeTextLayer
+        element={element}
+        slideId={slideId}
+        theme={theme}
+        selected={selected}
+        editing={editing}
+        onStartEditing={onStartEditing}
+      />
+    ) : (
+      <ShapeTextPreview element={element} slideId={slideId} theme={theme} />
+    )
+  ) : null;
   if (shape === "rect") {
     return (
       <div
@@ -240,7 +410,9 @@ function ShapeElementView({
               : undefined,
           borderRadius: radius,
         }}
-      />
+      >
+        {textLayer}
+      </div>
     );
   }
   if (shape === "ellipse") {
@@ -256,7 +428,9 @@ function ShapeElementView({
               : undefined,
           borderRadius: "50%",
         }}
-      />
+      >
+        {textLayer}
+      </div>
     );
   }
   if (shape === "arrow") {

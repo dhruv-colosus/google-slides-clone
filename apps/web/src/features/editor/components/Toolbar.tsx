@@ -30,12 +30,16 @@ import type {
   ImageElement,
   ShapeElement,
   ShapeKind,
+  TableElement,
   TextElement,
 } from "../model/types";
 import { TextFormatPanel } from "./TextFormatPanel";
 import { ShapeFormatPanel } from "./ShapeFormatPanel";
 import { ImageFormatPanel } from "./ImageFormatPanel";
+import { TableFormatPanel } from "./TableFormatPanel";
+import { TableCellFormatPanel } from "./TableCellFormatPanel";
 import { SelectionCommandsPanel } from "./SelectionCommandsPanel";
+import { SizePositionPanel } from "./SizePositionPanel";
 import { BackgroundPanel } from "./BackgroundPanel";
 import { LayoutPicker } from "./LayoutPicker";
 import { ThemePicker } from "./ThemePicker";
@@ -54,7 +58,7 @@ const LINE_OPTIONS: { kind: ShapeKind; label: string; Icon: React.ElementType }[
 ];
 
 export function Toolbar() {
-  const { tool, zoom, selection, pendingShapeKind } = useEditorState();
+  const { tool, zoom, selection, pendingShapeKind, editingElementId } = useEditorState();
   const { setTool, addSlide, undo, redo } = useEditorActions();
   const { canUndo, canRedo } = useUndoState();
   const slide = useActiveSlide();
@@ -81,6 +85,10 @@ export function Toolbar() {
   const selectedImageElement: ImageElement | null =
     selectedElements.length === 1 && selectedElements[0].type === "image"
       ? (selectedElements[0] as ImageElement)
+      : null;
+  const selectedTableElement: TableElement | null =
+    selectedElements.length === 1 && selectedElements[0].type === "table"
+      ? (selectedElements[0] as TableElement)
       : null;
   const selectedIds = selectedElements.map((e) => e.id);
 
@@ -278,17 +286,36 @@ export function Toolbar() {
         <span className={styles.toolbarDivider} />
 
         {selectedTextElement ? (
-          <TextFormatPanel element={selectedTextElement} />
+          <>
+            <TextFormatPanel element={selectedTextElement} />
+            <span className={styles.toolbarDivider} />
+            <SizePositionPanel element={selectedTextElement} />
+            <SelectionCommandsPanel selectedIds={selectedIds} />
+          </>
         ) : selectedShapeElement ? (
           <>
             <ShapeFormatPanel element={selectedShapeElement} />
             <span className={styles.toolbarDivider} />
+            <SizePositionPanel element={selectedShapeElement} />
             <SelectionCommandsPanel selectedIds={selectedIds} />
           </>
         ) : selectedImageElement ? (
           <>
             <ImageFormatPanel element={selectedImageElement} />
             <span className={styles.toolbarDivider} />
+            <SelectionCommandsPanel selectedIds={selectedIds} />
+          </>
+        ) : selectedTableElement ? (
+          <>
+            <TableFormatPanel element={selectedTableElement} />
+            {editingElementId === selectedTableElement.id && (
+              <>
+                <span className={styles.toolbarDivider} />
+                <TableCellFormatPanel />
+              </>
+            )}
+            <span className={styles.toolbarDivider} />
+            <SizePositionPanel element={selectedTableElement} />
             <SelectionCommandsPanel selectedIds={selectedIds} />
           </>
         ) : selectedIds.length > 1 ? (

@@ -25,16 +25,19 @@ import {
 import type { Editor } from "@tiptap/react";
 import type {
   Deck,
+  DeckMaster,
   ElementId,
   ShapeKind,
   Slide,
   SlideBackground,
   SlideElement,
   SlideId,
+  TableStyle,
   TextBlock,
   ToolMode,
   Selection,
 } from "../model/types";
+import { buildDefaultTableElement } from "../model/tableDefaults";
 import { getTheme, type Theme } from "../themes";
 import {
   InMemoryDocProvider,
@@ -73,6 +76,8 @@ export type UiState = {
   commentsPanelOpen: boolean;
   commentComposer: CommentComposerState | null;
   toast: ToastState;
+  headerFooterDialogOpen: boolean;
+  pageSetupDialogOpen: boolean;
 };
 
 export type EditorState = UiState & { deck: Deck; readOnly: boolean };
@@ -96,7 +101,11 @@ type UiAction =
   | { type: "openCommentComposer"; slideId: SlideId; editingCommentId?: string }
   | { type: "closeCommentComposer" }
   | { type: "showToast"; message: string; undoable?: boolean }
-  | { type: "dismissToast" };
+  | { type: "dismissToast" }
+  | { type: "openHeaderFooterDialog" }
+  | { type: "closeHeaderFooterDialog" }
+  | { type: "openPageSetupDialog" }
+  | { type: "closePageSetupDialog" };
 
 function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -211,6 +220,14 @@ function uiReducer(state: UiState, action: UiAction): UiState {
       };
     case "dismissToast":
       return { ...state, toast: { ...state.toast, message: null } };
+    case "openHeaderFooterDialog":
+      return { ...state, headerFooterDialogOpen: true };
+    case "closeHeaderFooterDialog":
+      return { ...state, headerFooterDialogOpen: false };
+    case "openPageSetupDialog":
+      return { ...state, pageSetupDialogOpen: true };
+    case "closePageSetupDialog":
+      return { ...state, pageSetupDialogOpen: false };
     default:
       return state;
   }
@@ -277,6 +294,8 @@ export function EditorProvider({
     commentsPanelOpen: false,
     commentComposer: null,
     toast: { key: 0, message: null, undoable: false },
+    headerFooterDialogOpen: false,
+    pageSetupDialogOpen: false,
   }));
 
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
@@ -572,6 +591,57 @@ export function useEditorActions() {
     [uiDispatch],
   );
 
+  const insertTable = useCallback(
+    (slideId: SlideId, rows: number, cols: number): ElementId | null => {
+      const deck = provider.readDeck();
+      const slide = deck.slides.find((s) => s.id === slideId);
+      if (!slide) return null;
+      const nextZ = slide.elements.length
+        ? Math.max(...slide.elements.map((e) => e.z)) + 1
+        : 1;
+      const el = buildDefaultTableElement({
+        id: `el-${crypto.randomUUID().slice(0, 8)}`,
+        rows,
+        cols,
+        slideWidth: deck.meta.pageWidth,
+        slideHeight: deck.meta.pageHeight,
+        z: nextZ,
+      });
+      provider.addElement(slideId, el);
+      uiDispatch({ type: "select", slideId, elementIds: [el.id] });
+      return el.id;
+    },
+    [provider, uiDispatch],
+  );
+
+  const updateTableStyle = useCallback(
+    (slideId: SlideId, tableId: ElementId, patch: Partial<TableStyle>) => {
+      provider.updateElement(slideId, tableId, { style: patch });
+    },
+    [provider],
+  );
+
+  const insertTableRow = useCallback(
+    (slideId: SlideId, tableId: ElementId, afterRow: number) =>
+      provider.insertTableRow(slideId, tableId, afterRow),
+    [provider],
+  );
+  const insertTableColumn = useCallback(
+    (slideId: SlideId, tableId: ElementId, afterCol: number) =>
+      provider.insertTableColumn(slideId, tableId, afterCol),
+    [provider],
+  );
+  const deleteTableRow = useCallback(
+    (slideId: SlideId, tableId: ElementId, row: number) =>
+      provider.deleteTableRow(slideId, tableId, row),
+    [provider],
+  );
+  const deleteTableColumn = useCallback(
+    (slideId: SlideId, tableId: ElementId, col: number) =>
+      provider.deleteTableColumn(slideId, tableId, col),
+    [provider],
+  );
+
   const updateTextBlock = useCallback(
     (slideId: SlideId, elementId: ElementId, partial: Partial<TextBlock>) => {
       const deck = provider.readDeck();
@@ -617,6 +687,31 @@ export function useEditorActions() {
     [uiDispatch],
   );
 
+  const updateMaster = useCallback(
+    (fields: Partial<DeckMaster>) => provider.updateMaster(fields),
+    [provider],
+  );
+  const openHeaderFooterDialog = useCallback(
+    () => uiDispatch({ type: "openHeaderFooterDialog" }),
+    [uiDispatch],
+  );
+  const closeHeaderFooterDialog = useCallback(
+    () => uiDispatch({ type: "closeHeaderFooterDialog" }),
+    [uiDispatch],
+  );
+  const openPageSetupDialog = useCallback(
+    () => uiDispatch({ type: "openPageSetupDialog" }),
+    [uiDispatch],
+  );
+  const closePageSetupDialog = useCallback(
+    () => uiDispatch({ type: "closePageSetupDialog" }),
+    [uiDispatch],
+  );
+  const setPageSize = useCallback(
+    (width: number, height: number) => provider.setPageSize(width, height),
+    [provider],
+  );
+
   return {
     selectSlide,
     selectElements,
@@ -647,6 +742,12 @@ export function useEditorActions() {
     startPresenting,
     stopPresenting,
     setPresenterBlank,
+    insertTable,
+    updateTableStyle,
+    insertTableRow,
+    insertTableColumn,
+    deleteTableRow,
+    deleteTableColumn,
     updateTextBlock,
     toggleCommentsPanel,
     setCommentsPanelOpen,
@@ -654,6 +755,12 @@ export function useEditorActions() {
     closeCommentComposer,
     showToast,
     dismissToast,
+    updateMaster,
+    openHeaderFooterDialog,
+    closeHeaderFooterDialog,
+    openPageSetupDialog,
+    closePageSetupDialog,
+    setPageSize,
   };
 }
 

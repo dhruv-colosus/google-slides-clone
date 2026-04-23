@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 import WebOutlinedIcon from "@mui/icons-material/WebOutlined";
 import FolderOpenOutlinedIcon from "@mui/icons-material/FolderOpenOutlined";
@@ -110,10 +110,17 @@ import GavelOutlinedIcon from "@mui/icons-material/GavelOutlined";
 import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import FunctionsOutlinedIcon from "@mui/icons-material/FunctionsOutlined";
 
+import { TableGridPicker } from "../components/TableGridPicker";
+
 export type MenuIcon = ComponentType<{
   fontSize?: "small" | "inherit" | "large" | "medium";
   className?: string;
 }>;
+
+export type MenuRenderContext = {
+  dispatch: (action: string, payload?: unknown) => void;
+  close: () => void;
+};
 
 export type MenuItem = {
   label: string;
@@ -122,6 +129,12 @@ export type MenuItem = {
   icon?: MenuIcon;
   children?: MenuNode[];
   action?: string;
+  /**
+   * Custom-rendered submenu body (e.g. the Insert → Table grid picker).
+   * When set on a parent with children, the parent shows a submenu whose
+   * body is this node instead of the standard list of child rows.
+   */
+  render?: (ctx: MenuRenderContext) => ReactNode;
 };
 
 export type MenuDivider = { divider: true };
@@ -231,7 +244,7 @@ export const MENU_CONFIG: TopMenu[] = [
         children: [{ label: "English" }, { label: "Other languages…" }],
       },
       { divider: true },
-      { label: "Page setup", icon: DescriptionOutlinedIcon },
+      { label: "Page setup", icon: DescriptionOutlinedIcon, action: "file.pageSetup" },
       { label: "Print preview", icon: ScreenshotMonitorOutlinedIcon },
       { label: "Print", icon: PrintOutlinedIcon, shortcut: "⌘P", action: "file.print" },
     ],
@@ -302,7 +315,7 @@ export const MENU_CONFIG: TopMenu[] = [
         children: [{ label: "Grid" }, { label: "Guides" }],
       },
       { divider: true },
-      { label: "Master", icon: DashboardOutlinedIcon },
+      { label: "Master", icon: DashboardOutlinedIcon, action: "view.master" },
       { label: "HTML view", icon: CodeOutlinedIcon },
       { label: "Full screen", icon: FullscreenOutlinedIcon, action: "view.fullscreen" },
       { label: "Show menus", icon: MenuOutlinedIcon },
@@ -334,7 +347,22 @@ export const MENU_CONFIG: TopMenu[] = [
           { label: "Ellipse", action: "insert.shape.ellipse" },
         ],
       },
-      { label: "Table", icon: TableChartOutlinedIcon },
+      {
+        label: "Table",
+        icon: TableChartOutlinedIcon,
+        children: [
+          {
+            label: "__table_grid__",
+            render: (ctx) => (
+              <TableGridPicker
+                onSelect={(rows, cols) =>
+                  ctx.dispatch("insert.table", { rows, cols })
+                }
+              />
+            ),
+          },
+        ],
+      },
       {
         label: "Chart",
         icon: BarChartOutlinedIcon,
@@ -374,7 +402,7 @@ export const MENU_CONFIG: TopMenu[] = [
       { label: "Comment", icon: CommentOutlinedIcon, shortcut: "⌘⌃M", action: "insert.comment" },
       { divider: true },
       { label: "New slide", icon: AddBoxOutlinedIcon, shortcut: "⌘M", action: "slide.new" },
-      { label: "Slide numbers", icon: FormatListNumberedOutlinedIcon },
+      { label: "Slide numbers", icon: FormatListNumberedOutlinedIcon, action: "insert.slideNumbers" },
       {
         label: "Placeholder",
         icon: DashboardOutlinedIcon,
@@ -389,10 +417,11 @@ export const MENU_CONFIG: TopMenu[] = [
       {
         label: "Header & page number",
         icon: FormatListNumberedOutlinedIcon,
+        action: "insert.headerFooter",
         children: [
-          { label: "Slide numbers" },
-          { label: "Date" },
-          { label: "Custom text" },
+          { label: "Slide numbers", action: "insert.slideNumbers" },
+          { label: "Date", action: "insert.date" },
+          { label: "Custom text", action: "insert.headerFooter" },
         ],
       },
       { label: "Bookmark", icon: BookmarkBorderOutlinedIcon },
@@ -495,16 +524,16 @@ export const MENU_CONFIG: TopMenu[] = [
         label: "Table",
         icon: TableChartOutlinedIcon,
         children: [
-          { label: "Insert row above" },
-          { label: "Insert row below" },
-          { label: "Insert column left" },
-          { label: "Insert column right" },
-          { label: "Delete row" },
-          { label: "Delete column" },
-          { label: "Delete table" },
-          { label: "Distribute rows" },
-          { label: "Distribute columns" },
-          { label: "Table properties" },
+          { label: "Insert row above", action: "table.insertRowAbove" },
+          { label: "Insert row below", action: "table.insertRowBelow" },
+          { label: "Insert column left", action: "table.insertColLeft" },
+          { label: "Insert column right", action: "table.insertColRight" },
+          { label: "Delete row", action: "table.deleteRow" },
+          { label: "Delete column", action: "table.deleteCol" },
+          { label: "Delete table", action: "table.deleteTable" },
+          { label: "Distribute rows", action: "table.distributeRows" },
+          { label: "Distribute columns", action: "table.distributeCols" },
+          { label: "Table properties", action: "table.properties" },
         ],
       },
       { divider: true },
@@ -588,6 +617,15 @@ export const MENU_CONFIG: TopMenu[] = [
         children: [
           { label: "Horizontally", action: "arrange.distribute.h" },
           { label: "Vertically", action: "arrange.distribute.v" },
+        ],
+      },
+      {
+        label: "Match size",
+        icon: AspectRatioOutlinedIcon,
+        children: [
+          { label: "Width", action: "arrange.match.width" },
+          { label: "Height", action: "arrange.match.height" },
+          { label: "Both", action: "arrange.match.both" },
         ],
       },
       {

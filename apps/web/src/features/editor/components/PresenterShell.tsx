@@ -266,6 +266,8 @@ export function PresenterShell() {
               pageWidth={pageWidth}
               pageHeight={pageHeight}
               themeId={deck.meta.themeId}
+              master={deck.meta.master}
+              slideNumber={currentIdx + 1}
               interactive={false}
             />
           </div>

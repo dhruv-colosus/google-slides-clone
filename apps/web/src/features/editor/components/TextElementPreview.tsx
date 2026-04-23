@@ -147,7 +147,7 @@ export function TextElementPreview({ element, slideId, theme }: Props) {
     fontFamily: resolveFontFamily(text.fontFamily, theme),
     lineHeight: text.lineHeight,
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent:
       align === "center"
         ? "center"

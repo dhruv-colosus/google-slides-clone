@@ -19,6 +19,7 @@ import FolderOpenRoundedIcon from "@mui/icons-material/FolderOpenRounded";
 import OndemandVideoOutlinedIcon from "@mui/icons-material/OndemandVideoOutlined";
 import AutoAwesomeRoundedIcon from "@mui/icons-material/AutoAwesomeRounded";
 import {
+  useActiveEditor,
   useActiveSlide,
   useEditorActions,
   useEditorState,
@@ -41,6 +42,8 @@ import {
 } from "../comments";
 import commentStyles from "../comments/comments.module.css";
 import styles from "../editor.module.css";
+import { tableMinSize } from "../utils/tableDims";
+import { clampToSlide } from "../geometry/align";
 
 const RULER_THICKNESS = 20;
 const UNITS = 10;
@@ -281,6 +284,10 @@ export function SlideCanvas() {
     stopEditing,
     startCropping,
     stopCropping,
+    insertTableRow,
+    insertTableColumn,
+    deleteTableRow,
+    deleteTableColumn,
   } = useEditorActions();
   const insertImage = useInsertImage();
 
@@ -310,11 +317,23 @@ export function SlideCanvas() {
   const selectedElements = slide
     ? slide.elements.filter((el) => selectedIds.includes(el.id))
     : [];
+  const activeEditor = useActiveEditor();
   const contextMenuItems = useElementContextMenu(
     slide?.id ?? null,
     selectedElements,
     deck.meta,
-    { addElement, updateElement, deleteElement, setElementZ, selectElements },
+    {
+      addElement,
+      updateElement,
+      deleteElement,
+      setElementZ,
+      selectElements,
+      insertTableRow,
+      insertTableColumn,
+      deleteTableRow,
+      deleteTableColumn,
+    },
+    activeEditor,
   );
 
   const isComposingHere =
@@ -732,6 +751,13 @@ export function SlideCanvas() {
                   type: "shape",
                   shape: kind,
                   fill: "theme.accentSoft",
+                  text: {
+                    align: "center",
+                    fontSize: 16,
+                    color: "theme.body",
+                    fontFamily: "theme.body",
+                    placeholder: "Add text",
+                  },
                 };
           } else if (isLinear) {
             const length = dragDist;
@@ -761,6 +787,13 @@ export function SlideCanvas() {
               type: "shape",
               shape: kind,
               fill: "theme.accentSoft",
+              text: {
+                align: "center",
+                fontSize: 16,
+                color: "theme.body",
+                fontFamily: "theme.body",
+                placeholder: "Add text",
+              },
             };
           }
 
@@ -859,6 +892,8 @@ export function SlideCanvas() {
               pageWidth={pageWidth}
               pageHeight={pageHeight}
               themeId={deck.meta.themeId}
+              master={deck.meta.master}
+              slideNumber={deck.slides.findIndex((s) => s.id === slide.id) + 1}
               selectedIds={readOnly ? [] : selectedIds}
               editingElementId={editingElementId}
               hiddenElementIds={croppingElementId ? [croppingElementId] : undefined}
@@ -956,10 +991,11 @@ export function SlideCanvas() {
                 const init = initialStateRef.current.get(id);
                 if (!init) return;
                 const [dx, dy] = lastEvent.beforeTranslate as [number, number];
-                updateElement(slide.id, id, {
-                  x: Math.round(init.x + dx),
-                  y: Math.round(init.y + dy),
-                });
+                const clamped = clampToSlide(
+                  { x: init.x + dx, y: init.y + dy, w: init.w, h: init.h },
+                  { pageWidth, pageHeight },
+                );
+                updateElement(slide.id, id, { x: clamped.x, y: clamped.y });
               }}
               onDragGroupStart={captureInitialState}
               onDragGroup={({ events }) => {
@@ -986,12 +1022,13 @@ export function SlideCanvas() {
                   const init = initialStateRef.current.get(id);
                   if (!init) return;
                   const [dx, dy] = ev.beforeTranslate as [number, number];
+                  const clamped = clampToSlide(
+                    { x: init.x + dx, y: init.y + dy, w: init.w, h: init.h },
+                    { pageWidth, pageHeight },
+                  );
                   updates.push({
                     id,
-                    patch: {
-                      x: Math.round(init.x + dx),
-                      y: Math.round(init.y + dy),
-                    },
+                    patch: { x: clamped.x, y: clamped.y },
                   });
                 });
                 updateElements(slide.id, updates);
@@ -1000,8 +1037,16 @@ export function SlideCanvas() {
               onResize={({ target, width, height, drag }) => {
                 const id = (target as HTMLElement).dataset.elementId as ElementId;
                 const rot = initialStateRef.current.get(id)?.rotation ?? 0;
-                target.style.width = `${width}px`;
-                target.style.height = `${height}px`;
+                let w = width;
+                let h = height;
+                const el = slide?.elements.find((e) => e.id === id);
+                if (el?.type === "table") {
+                  const { minW, minH } = tableMinSize(el);
+                  if (minW > 0) w = Math.max(w, minW);
+                  if (minH > 0) h = Math.max(h, minH);
+                }
+                target.style.width = `${w}px`;
+                target.style.height = `${h}px`;
                 target.style.transform = `translate(${drag.beforeTranslate[0]}px, ${drag.beforeTranslate[1]}px)${
                   rot ? ` rotate(${rot}deg)` : ""
                 }`;
@@ -1012,15 +1057,20 @@ export function SlideCanvas() {
                 const id = (target as HTMLElement).dataset.elementId as ElementId;
                 const init = initialStateRef.current.get(id);
                 if (!init) return;
-                const w = Math.round(lastEvent.width);
-                const h = Math.round(lastEvent.height);
+                let w = Math.round(lastEvent.width);
+                let h = Math.round(lastEvent.height);
+                const el = slide.elements.find((e) => e.id === id);
+                if (el?.type === "table") {
+                  const { minW, minH } = tableMinSize(el);
+                  if (minW > 0) w = Math.max(w, minW);
+                  if (minH > 0) h = Math.max(h, minH);
+                }
                 const [dx, dy] = lastEvent.drag.beforeTranslate as [number, number];
-                updateElement(slide.id, id, {
-                  w,
-                  h,
-                  x: Math.round(init.x + dx),
-                  y: Math.round(init.y + dy),
-                });
+                const clamped = clampToSlide(
+                  { x: init.x + dx, y: init.y + dy, w, h },
+                  { pageWidth, pageHeight },
+                );
+                updateElement(slide.id, id, clamped);
               }}
               onRotateStart={captureInitialState}
               onRotate={({ target, beforeRotate }) => {

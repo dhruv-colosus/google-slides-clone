@@ -13,7 +13,7 @@ import styles from "./menuBar.module.css";
 
 type ChildOpen = { idx: number; rect: DOMRect } | null;
 
-export type MenuActions = Record<string, () => void>;
+export type MenuActions = Record<string, (payload?: unknown) => void>;
 
 type DropdownProps = {
   items: MenuNode[];
@@ -55,6 +55,19 @@ function Dropdown({
     openChild && !isDivider(items[openChild.idx])
       ? (items[openChild.idx] as MenuItem)
       : null;
+
+  const renderChild =
+    childItem?.children?.find(
+      (n): n is MenuItem => !isDivider(n) && typeof n.render === "function",
+    ) ?? null;
+
+  const renderCtx = {
+    dispatch: (action: string, payload?: unknown) => {
+      actions?.[action]?.(payload);
+      onClose();
+    },
+    close: onClose,
+  };
 
   return (
     <>
@@ -121,17 +134,38 @@ function Dropdown({
         </div>,
         document.body,
       )}
-      {openChild && childItem?.children && (
-        <Dropdown
-          items={childItem.children}
-          anchorRect={openChild.rect}
-          side="right"
-          onClose={onClose}
-          onHoverIn={onHoverIn}
-          onHoverOut={onHoverOut}
-          actions={actions}
-        />
-      )}
+      {openChild &&
+        childItem?.children &&
+        (renderChild
+          ? createPortal(
+              <div
+                className={styles.dropdown}
+                style={{
+                  position: "fixed",
+                  top: openChild.rect.top - 6,
+                  left: openChild.rect.right + 2,
+                  maxWidth: "none",
+                  width: "max-content",
+                }}
+                role="menu"
+                onMouseEnter={onHoverIn}
+                onMouseLeave={onHoverOut}
+              >
+                {renderChild.render?.(renderCtx)}
+              </div>,
+              document.body,
+            )
+          : (
+              <Dropdown
+                items={childItem.children}
+                anchorRect={openChild.rect}
+                side="right"
+                onClose={onClose}
+                onHoverIn={onHoverIn}
+                onHoverOut={onHoverOut}
+                actions={actions}
+              />
+            ))}
     </>
   );
 }

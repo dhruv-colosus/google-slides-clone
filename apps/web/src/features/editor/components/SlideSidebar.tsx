@@ -20,7 +20,7 @@ import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import DeleteOutlineRoundedIcon from "@mui/icons-material/DeleteOutlineRounded";
 import { useActiveSlide, useEditorActions, useEditorState } from "../state/EditorContext";
-import type { Slide, SlideId } from "../model/types";
+import type { DeckMaster, Slide, SlideId } from "../model/types";
 import styles from "../editor.module.css";
 import { SlideRenderer } from "./SlideRenderer";
 
@@ -37,6 +37,7 @@ function SortableThumbnail({
   pageWidth,
   pageHeight,
   themeId,
+  master,
   onSelect,
   onOpenMenu,
 }: {
@@ -46,6 +47,7 @@ function SortableThumbnail({
   pageWidth: number;
   pageHeight: number;
   themeId: string;
+  master?: DeckMaster;
   onSelect: () => void;
   onOpenMenu: (slideId: SlideId, x: number, y: number) => void;
 }) {
@@ -114,6 +116,8 @@ function SortableThumbnail({
             pageWidth={pageWidth}
             pageHeight={pageHeight}
             themeId={themeId}
+            master={master}
+            slideNumber={index + 1}
             interactive={false}
           />
         </div>
@@ -305,6 +309,7 @@ export function SlideSidebar() {
                 pageWidth={deck.meta.pageWidth}
                 pageHeight={deck.meta.pageHeight}
                 themeId={deck.meta.themeId}
+                master={deck.meta.master}
                 onSelect={() => selectSlide(slide.id)}
                 onOpenMenu={openMenu}
               />

@@ -10,6 +10,9 @@ import AlignVerticalCenterRoundedIcon from "@mui/icons-material/AlignVerticalCen
 import AlignVerticalBottomRoundedIcon from "@mui/icons-material/AlignVerticalBottomRounded";
 import ViewColumnRoundedIcon from "@mui/icons-material/ViewColumnRounded";
 import ViewStreamRoundedIcon from "@mui/icons-material/ViewStreamRounded";
+import SwapHorizRoundedIcon from "@mui/icons-material/SwapHorizRounded";
+import SwapVertRoundedIcon from "@mui/icons-material/SwapVertRounded";
+import AspectRatioRoundedIcon from "@mui/icons-material/AspectRatioRounded";
 import FlipToFrontRoundedIcon from "@mui/icons-material/FlipToFrontRounded";
 import FlipToBackRoundedIcon from "@mui/icons-material/FlipToBackRounded";
 import KeyboardArrowUpRoundedIcon from "@mui/icons-material/KeyboardArrowUpRounded";
@@ -24,7 +27,9 @@ import {
   alignVertical,
   distributeHorizontal,
   distributeVertical,
+  matchSize,
   type AlignTarget,
+  type MatchSizeMode,
 } from "../geometry/align";
 import { Dropdown } from "./FormatPanelPrimitives";
 import styles from "../editor.module.css";
@@ -65,6 +70,11 @@ export function SelectionCommandsPanel({
     const updates = distributeVertical(targets);
     if (updates.length) updateElements(slide.id, updates);
   };
+  const runMatchSize = (mode: MatchSizeMode) => {
+    const updates = matchSize(targets, mode);
+    if (updates.length) updateElements(slide.id, updates);
+  };
+  const canMatchSize = targets.length >= 2;
 
   return (
     <>
@@ -194,6 +204,50 @@ export function SelectionCommandsPanel({
                 aria-label="Distribute vertically"
               >
                 <ViewStreamRoundedIcon fontSize="small" />
+              </button>
+            </div>
+          </div>
+          <div className={styles.alignSection}>
+            <div className={styles.alignSectionLabel}>Match size</div>
+            <div className={styles.alignRow}>
+              <button
+                type="button"
+                className={styles.toolbarButton}
+                onClick={() => {
+                  runMatchSize("width");
+                  setAlignOpen(false);
+                }}
+                disabled={!canMatchSize}
+                title="Match width"
+                aria-label="Match width"
+              >
+                <SwapHorizRoundedIcon fontSize="small" />
+              </button>
+              <button
+                type="button"
+                className={styles.toolbarButton}
+                onClick={() => {
+                  runMatchSize("height");
+                  setAlignOpen(false);
+                }}
+                disabled={!canMatchSize}
+                title="Match height"
+                aria-label="Match height"
+              >
+                <SwapVertRoundedIcon fontSize="small" />
+              </button>
+              <button
+                type="button"
+                className={styles.toolbarButton}
+                onClick={() => {
+                  runMatchSize("both");
+                  setAlignOpen(false);
+                }}
+                disabled={!canMatchSize}
+                title="Match size"
+                aria-label="Match size"
+              >
+                <AspectRatioRoundedIcon fontSize="small" />
               </button>
             </div>
           </div>

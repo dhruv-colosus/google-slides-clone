@@ -10,6 +10,10 @@
  *   For text elements, `text` holds the block-level props (align, fontSize,
  *   fontFamily, color, lineHeight, placeholder) as plain JSON, and `doc`
  *   holds a Y.XmlFragment bound to Tiptap via y-prosemirror.
+ *
+ *   Table elements store structural fields (rows, cols, colRatios, rowRatios,
+ *   cells, style) as plain JSON, plus `"cells"` as a Y.Map<cellId, Y.XmlFragment>
+ *   for per-cell rich-text.
  */
 
 import * as Y from "yjs";
@@ -17,21 +21,27 @@ import {
   prosemirrorJSONToYXmlFragment,
   yXmlFragmentToProsemirrorJSON,
 } from "y-prosemirror";
-import { getTextSchema } from "../tiptap/extensions";
+import { getTableCellSchema, getTextSchema } from "../tiptap/extensions";
 import type {
   BaseElement,
   Comment,
   Deck,
+  DeckMaster,
   DeckMeta,
   ElementId,
   ImageCrop,
   ImageElement,
+  LegacyTableElement,
   ShapeElement,
   Slide,
   SlideElement,
+  TableCell,
+  TableElement,
+  TableStyle,
   TextBlock,
   TextElement,
 } from "../model/types";
+import { migrateLegacyTable } from "../model/migrateTable";
 
 export type YSlide = Y.Map<unknown>;
 export type YElement = Y.Map<unknown>;
@@ -88,10 +98,19 @@ export function findCommentIndex(doc: Y.Doc, commentId: string): number {
 }
 
 export function sanitizeTextBlock(text: TextBlock): TextBlock {
-  // `contentJson` is a derived projection of the Y.XmlFragment; the fragment
-  // is authoritative, so we must never write it back into the Y.Map.
   const { contentJson: _drop, ...rest } = text;
   return rest;
+}
+
+function sanitizeCell(cell: TableCell): TableCell {
+  const { contentJson: _drop, ...rest } = cell;
+  return rest;
+}
+
+function isNewTableElement(el: SlideElement | LegacyTableElement): el is TableElement {
+  if (el.type !== "table") return false;
+  const maybe = el as TableElement;
+  return Array.isArray(maybe.cells) && Array.isArray(maybe.colRatios);
 }
 
 function elementToYMap(el: SlideElement): YElement {
@@ -114,6 +133,22 @@ function elementToYMap(el: SlideElement): YElement {
     if (el.stroke !== undefined) m.set("stroke", el.stroke);
     if (el.strokeWidth !== undefined) m.set("strokeWidth", el.strokeWidth);
     if (el.radius !== undefined) m.set("radius", el.radius);
+    if (el.text !== undefined) {
+      m.set("text", sanitizeTextBlock(el.text));
+      m.set("doc", new Y.XmlFragment());
+    }
+  } else if (el.type === "table") {
+    m.set("style", { ...el.style });
+    m.set("rows", el.rows);
+    m.set("cols", el.cols);
+    m.set("colRatios", [...el.colRatios]);
+    m.set("rowRatios", [...el.rowRatios]);
+    m.set("cells", el.cells.map(sanitizeCell));
+    const cellFragments = new Y.Map<Y.XmlFragment>();
+    for (const cell of el.cells) {
+      cellFragments.set(cell.id, new Y.XmlFragment());
+    }
+    m.set("cellFragments", cellFragments);
   } else {
     m.set("src", el.src);
     if (el.alt !== undefined) m.set("alt", el.alt);
@@ -134,6 +169,23 @@ function slideToYMap(s: Slide): YSlide {
   return m;
 }
 
+function normalizeTableElement(el: SlideElement | LegacyTableElement): {
+  element: TableElement;
+  cellContent: Map<string, unknown>;
+} {
+  if (el.type !== "table") {
+    throw new Error("normalizeTableElement called on non-table element");
+  }
+  if (isNewTableElement(el)) {
+    const content = new Map<string, unknown>();
+    for (const cell of el.cells) {
+      if (cell.contentJson) content.set(cell.id, cell.contentJson);
+    }
+    return { element: el, cellContent: content };
+  }
+  return migrateLegacyTable(el as LegacyTableElement);
+}
+
 export function hydrateDoc(doc: Y.Doc, deck: Deck) {
   const meta = doc.getMap<unknown>("meta");
   const slides = doc.getArray<YSlide>("slides");
@@ -145,32 +197,71 @@ export function hydrateDoc(doc: Y.Doc, deck: Deck) {
     meta.set("pageWidth", deck.meta.pageWidth);
     meta.set("pageHeight", deck.meta.pageHeight);
     meta.set("schemaVersion", deck.meta.schemaVersion);
+    meta.set("master", deck.meta.master ?? {});
     if (slides.length) slides.delete(0, slides.length);
-    slides.insert(0, deck.slides.map(slideToYMap));
+
+    const normalizedSlides: Slide[] = deck.slides.map((s) => ({
+      ...s,
+      elements: s.elements.map((el) =>
+        el.type === "table" ? normalizeTableElement(el).element : el,
+      ),
+    }));
+    slides.insert(0, normalizedSlides.map(slideToYMap));
     if (comments.length) comments.delete(0, comments.length);
     if (deck.comments?.length) {
       comments.insert(0, deck.comments.map(commentToYMap));
     }
 
-    // Second pass: now that every YMap/YArray is attached to the doc, populate
-    // each text element's Y.XmlFragment from its persisted ProseMirror JSON.
-    // This restores inline formatting, marks, and typed text after reload.
-    let schema: ReturnType<typeof getTextSchema> | null = null;
+    // Second pass: populate text / table-cell Y.XmlFragments now that all
+    // Y.Maps are attached. Deferring matches what y-prosemirror needs —
+    // a detached fragment cannot receive content changes without losing them.
+    let textSchema: ReturnType<typeof getTextSchema> | null = null;
+    let cellSchema: ReturnType<typeof getTableCellSchema> | null = null;
     for (let i = 0; i < deck.slides.length; i++) {
-      const slideElements = deck.slides[i].elements;
+      const sourceElements = deck.slides[i].elements;
       const ySlide = slides.get(i);
       const yEls = ySlide.get("elements") as Y.Array<YElement>;
-      for (let j = 0; j < slideElements.length; j++) {
-        const el = slideElements[j];
-        if (el.type !== "text") continue;
-        const contentJson = el.text.contentJson;
-        if (!contentJson || typeof contentJson !== "object") continue;
+      for (let j = 0; j < sourceElements.length; j++) {
+        const el = sourceElements[j];
         const yEl = yEls.get(j);
+        if (el.type === "table") {
+          const { cellContent } = normalizeTableElement(el);
+          const cellFragments = yEl.get("cellFragments");
+          if (!(cellFragments instanceof Y.Map)) continue;
+          try {
+            if (!cellSchema) cellSchema = getTableCellSchema();
+          } catch (err) {
+            console.warn("[hydrateDoc] failed to build cell schema", err);
+            continue;
+          }
+          cellFragments.forEach((fragment, cellId) => {
+            if (!(fragment instanceof Y.XmlFragment)) return;
+            const content =
+              cellContent.get(cellId) ?? {
+                type: "doc",
+                content: [{ type: "paragraph" }],
+              };
+            try {
+              prosemirrorJSONToYXmlFragment(cellSchema!, content, fragment);
+            } catch (err) {
+              console.warn("[hydrateDoc] failed to hydrate cell", cellId, err);
+            }
+          });
+          continue;
+        }
         const fragment = yEl.get("doc");
         if (!(fragment instanceof Y.XmlFragment)) continue;
+        const block =
+          el.type === "text"
+            ? el.text
+            : el.type === "shape"
+              ? el.text
+              : undefined;
+        const contentJson = block?.contentJson;
+        if (!contentJson || typeof contentJson !== "object") continue;
         try {
-          if (!schema) schema = getTextSchema();
-          prosemirrorJSONToYXmlFragment(schema, contentJson, fragment);
+          if (!textSchema) textSchema = getTextSchema();
+          prosemirrorJSONToYXmlFragment(textSchema, contentJson, fragment);
         } catch (err) {
           console.warn("[hydrateDoc] failed to hydrate text fragment", err);
         }
@@ -179,8 +270,44 @@ export function hydrateDoc(doc: Y.Doc, deck: Deck) {
   }, "hydrate");
 }
 
+function readTableElement(m: YElement, base: BaseElement): TableElement {
+  const style = { ...((m.get("style") as TableStyle | undefined) ?? {}) };
+  const rows = (m.get("rows") as number | undefined) ?? 0;
+  const cols = (m.get("cols") as number | undefined) ?? 0;
+  const colRatios = [...((m.get("colRatios") as number[] | undefined) ?? [])];
+  const rowRatios = [...((m.get("rowRatios") as number[] | undefined) ?? [])];
+  const rawCells = (m.get("cells") as TableCell[] | undefined) ?? [];
+  const cellFragments = m.get("cellFragments");
+  const fragMap =
+    cellFragments instanceof Y.Map ? (cellFragments as Y.Map<Y.XmlFragment>) : null;
+  const cells: TableCell[] = rawCells.map((c) => {
+    const copy: TableCell = { id: c.id, row: c.row, col: c.col };
+    if (fragMap) {
+      const frag = fragMap.get(c.id);
+      if (frag instanceof Y.XmlFragment) {
+        try {
+          copy.contentJson = yXmlFragmentToProsemirrorJSON(frag);
+        } catch {
+          // leave undefined
+        }
+      }
+    }
+    return copy;
+  });
+  return {
+    ...base,
+    type: "table",
+    rows,
+    cols,
+    colRatios,
+    rowRatios,
+    cells,
+    style,
+  };
+}
+
 function readElement(m: YElement): SlideElement {
-  const type = m.get("type") as "text" | "shape" | "image";
+  const type = m.get("type") as "text" | "shape" | "image" | "table";
   const base: BaseElement = {
     id: m.get("id") as ElementId,
     x: m.get("x") as number,
@@ -191,6 +318,9 @@ function readElement(m: YElement): SlideElement {
     rotation: m.get("rotation") as number | undefined,
     locked: m.get("locked") as boolean | undefined,
   };
+  if (type === "table") {
+    return readTableElement(m, base);
+  }
   if (type === "text") {
     const text = { ...(m.get("text") as TextElement["text"]) };
     const fragment = m.get("doc");
@@ -198,13 +328,26 @@ function readElement(m: YElement): SlideElement {
       try {
         text.contentJson = yXmlFragmentToProsemirrorJSON(fragment);
       } catch {
-        // fragment serialization failed — leave contentJson undefined
+        // leave contentJson undefined
       }
     }
     const el: TextElement = { ...base, type, text };
     return el;
   }
   if (type === "shape") {
+    const rawText = m.get("text") as TextElement["text"] | undefined;
+    let shapeText: TextElement["text"] | undefined;
+    if (rawText) {
+      shapeText = { ...rawText };
+      const fragment = m.get("doc");
+      if (fragment instanceof Y.XmlFragment) {
+        try {
+          shapeText.contentJson = yXmlFragmentToProsemirrorJSON(fragment);
+        } catch {
+          // leave contentJson undefined on failure
+        }
+      }
+    }
     const el: ShapeElement = {
       ...base,
       type,
@@ -213,6 +356,7 @@ function readElement(m: YElement): SlideElement {
       stroke: m.get("stroke") as string | undefined,
       strokeWidth: m.get("strokeWidth") as number | undefined,
       radius: m.get("radius") as number | undefined,
+      text: shapeText,
     };
     return el;
   }
@@ -242,12 +386,21 @@ export function readDeck(doc: Y.Doc): Deck {
   const meta = doc.getMap<unknown>("meta");
   const slides = doc.getArray<YSlide>("slides");
   const comments = doc.getArray<YComment>("comments");
+  const rawMaster = meta.get("master") as DeckMaster | undefined;
   const deckMeta: DeckMeta = {
     title: meta.get("title") as string,
     themeId: meta.get("themeId") as string,
     pageWidth: meta.get("pageWidth") as number,
     pageHeight: meta.get("pageHeight") as number,
     schemaVersion: meta.get("schemaVersion") as number,
+    master:
+      rawMaster &&
+      (rawMaster.titleText ||
+        rawMaster.footer ||
+        rawMaster.showSlideNumber ||
+        rawMaster.showDate)
+        ? rawMaster
+        : undefined,
   };
   return {
     id: meta.get("id") as string,
@@ -294,6 +447,56 @@ export function populateTextFragmentFromJson(yEl: YElement, contentJson: unknown
   } catch (err) {
     console.warn("[populateTextFragment] failed to hydrate text fragment", err);
   }
+}
+
+export function populateTableCellFragments(
+  yEl: YElement,
+  cellContent: Map<string, unknown>,
+): void {
+  const cellFragments = yEl.get("cellFragments");
+  if (!(cellFragments instanceof Y.Map)) return;
+  const schema = getTableCellSchema();
+  cellFragments.forEach((fragment, cellId) => {
+    if (!(fragment instanceof Y.XmlFragment)) return;
+    const content =
+      cellContent.get(cellId) ?? {
+        type: "doc",
+        content: [{ type: "paragraph" }],
+      };
+    try {
+      prosemirrorJSONToYXmlFragment(schema, content, fragment);
+    } catch (err) {
+      console.warn("[populateTableCellFragments] failed for cell", cellId, err);
+    }
+  });
+}
+
+export function getTableCellYFragment(
+  yEl: YElement,
+  cellId: string,
+): Y.XmlFragment | null {
+  const cellFragments = yEl.get("cellFragments");
+  if (!(cellFragments instanceof Y.Map)) return null;
+  const frag = (cellFragments as Y.Map<unknown>).get(cellId);
+  return frag instanceof Y.XmlFragment ? frag : null;
+}
+
+export function ensureTableCellFragment(
+  yEl: YElement,
+  cellId: string,
+): Y.XmlFragment {
+  let cellFragments = yEl.get("cellFragments");
+  if (!(cellFragments instanceof Y.Map)) {
+    cellFragments = new Y.Map<Y.XmlFragment>();
+    yEl.set("cellFragments", cellFragments);
+  }
+  const map = cellFragments as Y.Map<Y.XmlFragment>;
+  let frag = map.get(cellId);
+  if (!(frag instanceof Y.XmlFragment)) {
+    frag = new Y.XmlFragment();
+    map.set(cellId, frag);
+  }
+  return frag;
 }
 
 export { slideToYMap, elementToYMap };

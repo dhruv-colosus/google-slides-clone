@@ -4,10 +4,12 @@ import type {
   ShapeElement,
   Slide,
   SlideElement,
+  TableElement,
   TextElement,
 } from "../model/types";
 import { resolveColor, resolveFontFamily, type Theme } from "../themes";
 import { proseMirrorToPptxRuns } from "./proseMirrorToPptxRuns";
+import { renderTableElement } from "./renderTable";
 
 const PX_PER_INCH = 96;
 const pxToIn = (px: number): number => px / PX_PER_INCH;
@@ -60,6 +62,7 @@ type PptxSlide = {
   addText: (text: unknown, options: unknown) => unknown;
   addShape: (shapeName: string, options: unknown) => unknown;
   addImage: (options: unknown) => unknown;
+  addTable: (rows: unknown, options: unknown) => unknown;
   background: unknown;
 };
 
@@ -133,6 +136,36 @@ function renderShapeElement(
     options.rectRadius = normalized;
   }
   if (el.rotation) options.rotate = el.rotation;
+
+  // Shapes with inline text: inject the same run-based content we produce for
+  // text elements so pptxgenjs renders the text inside the shape frame.
+  const textBlock = el.text;
+  const hasText =
+    !!textBlock &&
+    el.shape !== "line" &&
+    el.shape !== "arrow" &&
+    !!textBlock.contentJson;
+  if (hasText && textBlock) {
+    const runs = proseMirrorToPptxRuns(textBlock.contentJson, {
+      ...textBlock,
+      color: resolveColor(textBlock.color, theme),
+      fontFamily: resolveFontFamily(textBlock.fontFamily, theme),
+    });
+    options.text = runs;
+    options.align = textBlock.align ?? "center";
+    options.valign = "middle";
+    options.fontSize = textBlock.fontSize ?? 16;
+    options.color =
+      stripHash(resolveColor(textBlock.color, theme)) ??
+      stripHash(theme.colors.body);
+    const fontFace = resolveFontFamily(textBlock.fontFamily, theme);
+    if (fontFace) {
+      options.fontFace = fontFace.split(",")[0].trim().replace(/['"]/g, "");
+    }
+    if (textBlock.lineHeight) options.lineSpacingMultiple = textBlock.lineHeight;
+    options.margin = 4;
+  }
+
   slide.addShape(shapeName, options);
 }
 
@@ -184,6 +217,10 @@ async function renderImageElement(
   slide.addImage(options);
 }
 
+function renderTableElementWrap(slide: PptxSlide, el: TableElement): void {
+  renderTableElement(slide, el);
+}
+
 async function renderElement(
   slide: PptxSlide,
   el: SlideElement,
@@ -192,6 +229,7 @@ async function renderElement(
   if (el.type === "text") return renderTextElement(slide, el, theme);
   if (el.type === "shape") return renderShapeElement(slide, el, theme);
   if (el.type === "image") return renderImageElement(slide, el);
+  if (el.type === "table") return renderTableElementWrap(slide, el);
 }
 
 const PPTXGENJS_SCRIPT_SRC = "/vendor/pptxgen.bundle.js";
@@ -239,7 +277,23 @@ export async function exportDeckAsPptx(deck: Deck, theme: Theme): Promise<void> 
   pres.defineLayout({ name: "DECK", width: widthIn, height: heightIn });
   pres.layout = "DECK";
 
-  for (const slideData of deck.slides) {
+  const master = deck.meta.master;
+  const exportDate = master?.showDate
+    ? (() => {
+        try {
+          return new Date().toLocaleDateString(undefined, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          });
+        } catch {
+          return new Date().toDateString();
+        }
+      })()
+    : "";
+
+  for (let slideIdx = 0; slideIdx < deck.slides.length; slideIdx++) {
+    const slideData = deck.slides[slideIdx];
     const slide = pres.addSlide();
     slide.background = resolveBackgroundForPptx(slideData, theme);
 
@@ -251,6 +305,54 @@ export async function exportDeckAsPptx(deck: Deck, theme: Theme): Promise<void> 
         // Keep the export going even if a single element fails.
         console.error("PPTX export: failed to render element", el.id, err);
       }
+    }
+
+    const footerColor = stripHash(theme.colors.muted) ?? "888888";
+    const footerH = 0.28;
+    const footerY = heightIn - footerH;
+    const sideW = widthIn * 0.22;
+
+    if (master?.footer) {
+      slide.addText(master.footer, {
+        x: sideW,
+        y: footerY,
+        w: widthIn - sideW * 2,
+        h: footerH,
+        align: "center",
+        valign: "middle",
+        fontSize: 9,
+        color: footerColor,
+        isTextBox: true,
+        margin: 0,
+      });
+    }
+    if (master?.showDate && exportDate) {
+      slide.addText(exportDate, {
+        x: 0.1,
+        y: footerY,
+        w: sideW,
+        h: footerH,
+        align: "left",
+        valign: "middle",
+        fontSize: 9,
+        color: footerColor,
+        isTextBox: true,
+        margin: 0,
+      });
+    }
+    if (master?.showSlideNumber) {
+      slide.addText(String(slideIdx + 1), {
+        x: widthIn - sideW - 0.1,
+        y: footerY,
+        w: sideW,
+        h: footerH,
+        align: "right",
+        valign: "middle",
+        fontSize: 9,
+        color: footerColor,
+        isTextBox: true,
+        margin: 0,
+      });
     }
   }
 

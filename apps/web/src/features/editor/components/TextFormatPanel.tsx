@@ -186,12 +186,21 @@ export function TextFormatPanel({ element }: { element: TextElement }) {
         <RemoveRoundedIcon fontSize="small" />
       </button>
       <input
+        key={fontSize}
         type="number"
         className={styles.fontSizeInput}
-        value={fontSize}
-        onChange={(e) => setFontSize(Number(e.target.value) || fontSize)}
+        defaultValue={fontSize}
+        onBlur={(e) => {
+          const n = Number(e.currentTarget.value);
+          if (Number.isFinite(n) && n > 0) setFontSize(n);
+          else e.currentTarget.value = String(fontSize);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            (e.currentTarget as HTMLInputElement).value = String(fontSize);
+            (e.currentTarget as HTMLInputElement).blur();
+          }
         }}
         aria-label="Font size"
       />

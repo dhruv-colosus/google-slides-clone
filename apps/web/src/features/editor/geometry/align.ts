@@ -18,11 +18,12 @@ export type AlignTarget = {
 
 export type AlignUpdate = {
   id: string;
-  patch: { x?: number; y?: number };
+  patch: { x?: number; y?: number; w?: number; h?: number };
 };
 
 export type HorizontalAlign = "left" | "center" | "right";
 export type VerticalAlign = "top" | "middle" | "bottom";
+export type MatchSizeMode = "width" | "height" | "both";
 
 type PageSize = { pageWidth: number; pageHeight: number };
 
@@ -95,6 +96,45 @@ export function distributeHorizontal(targets: AlignTarget[]): AlignUpdate[] {
     cursor += t.w + gap;
   }
   return updates;
+}
+
+/**
+ * Match size equalises width and/or height across the selection using the
+ * first target as the reference. Position (x, y) is untouched — elements stay
+ * pinned at their top-left. Needs 2+ targets.
+ */
+export function matchSize(
+  targets: AlignTarget[],
+  mode: MatchSizeMode,
+): AlignUpdate[] {
+  if (targets.length < 2) return [];
+  const [ref, ...rest] = targets;
+  const w = Math.round(ref.w);
+  const h = Math.round(ref.h);
+  return rest.map((t) => {
+    const patch: { w?: number; h?: number } = {};
+    if (mode === "width" || mode === "both") patch.w = w;
+    if (mode === "height" || mode === "both") patch.h = h;
+    return { id: t.id, patch };
+  });
+}
+
+/**
+ * Clamp an element's bounds so that it stays fully inside the slide. Size is
+ * capped at the slide dimensions (and never below 1px), then the position is
+ * pinned so the box does not extend past any edge.
+ */
+export function clampToSlide(
+  b: { x: number; y: number; w: number; h: number },
+  page: PageSize,
+): { x: number; y: number; w: number; h: number } {
+  const w = Math.max(1, Math.min(b.w, page.pageWidth));
+  const h = Math.max(1, Math.min(b.h, page.pageHeight));
+  const maxX = Math.max(0, page.pageWidth - w);
+  const maxY = Math.max(0, page.pageHeight - h);
+  const x = Math.min(Math.max(0, b.x), maxX);
+  const y = Math.min(Math.max(0, b.y), maxY);
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
 export function distributeVertical(targets: AlignTarget[]): AlignUpdate[] {

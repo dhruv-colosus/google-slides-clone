@@ -9,7 +9,7 @@
 export type ElementId = string;
 export type SlideId = string;
 
-export type ElementType = "text" | "shape" | "image";
+export type ElementType = "text" | "shape" | "image" | "table";
 
 export type ShapeKind = "rect" | "ellipse" | "line" | "arrow";
 
@@ -54,6 +54,9 @@ export type ShapeElement = BaseElement & {
   stroke?: string;
   strokeWidth?: number;
   radius?: number;
+  // Optional editable text rendered inside the shape. Only meaningful for
+  // closed shapes (rect, ellipse); lines/arrows ignore it.
+  text?: TextBlock;
 };
 
 /**
@@ -71,7 +74,43 @@ export type ImageElement = BaseElement & {
   crop?: ImageCrop;
 };
 
-export type SlideElement = TextElement | ShapeElement | ImageElement;
+export type TableStyle = {
+  headerEnabled?: boolean;
+  headerFill?: string;
+  headerBold?: boolean;
+  zebraEnabled?: boolean;
+  zebraFill?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  tableFill?: string;
+};
+
+export type TableCell = {
+  id: string;
+  row: number;
+  col: number;
+  contentJson?: unknown;
+};
+
+export type TableElement = BaseElement & {
+  type: "table";
+  rows: number;
+  cols: number;
+  colRatios: number[];
+  rowRatios: number[];
+  cells: TableCell[];
+  style: TableStyle;
+};
+
+export type LegacyTableElement = BaseElement & {
+  type: "table";
+  style: TableStyle;
+  rows?: number;
+  cols?: number;
+  contentJson?: unknown;
+};
+
+export type SlideElement = TextElement | ShapeElement | ImageElement | TableElement;
 
 export type SlideBackground =
   | { kind: "solid"; color: string }
@@ -86,12 +125,20 @@ export type Slide = {
   notes?: string;
 };
 
+export type DeckMaster = {
+  titleText?: string;
+  footer?: string;
+  showSlideNumber?: boolean;
+  showDate?: boolean;
+};
+
 export type DeckMeta = {
   title: string;
   themeId: string;
   pageWidth: number;
   pageHeight: number;
   schemaVersion: number;
+  master?: DeckMaster;
 };
 
 export type CommentId = string;

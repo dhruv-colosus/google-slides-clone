@@ -10,6 +10,7 @@ import {
   useEditorActions,
 } from "../state/EditorContext";
 import type { SlideBackground } from "../model/types";
+import { fileToDataUrl } from "../utils/fileToDataUrl";
 import { Dropdown } from "./FormatPanelPrimitives";
 import styles from "../editor.module.css";
 
@@ -50,9 +51,13 @@ export function BackgroundPanel() {
     setSlideBackground(slide.id, next);
   };
 
-  const handleImageFile = (file: File) => {
-    const url = URL.createObjectURL(file);
-    apply({ kind: "image", src: url });
+  const handleImageFile = async (file: File) => {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      apply({ kind: "image", src: dataUrl });
+    } catch (err) {
+      console.error("Failed to read background image", err);
+    }
   };
 
   const previewSwatch = (() => {

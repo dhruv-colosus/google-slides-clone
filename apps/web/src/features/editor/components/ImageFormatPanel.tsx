@@ -10,6 +10,8 @@ import {
   useEditorState,
 } from "../state/EditorContext";
 import type { ImageCrop, ImageElement } from "../model/types";
+import { fileToDataUrl } from "../utils/fileToDataUrl";
+import { SizePositionPanel } from "./SizePositionPanel";
 import styles from "../editor.module.css";
 
 export function ImageFormatPanel({ element }: { element: ImageElement }) {
@@ -27,12 +29,16 @@ export function ImageFormatPanel({ element }: { element: ImageElement }) {
       element.crop.w !== 1 ||
       element.crop.h !== 1);
 
-  const handleReplace = (file: File) => {
-    const url = URL.createObjectURL(file);
-    updateElement(slideId, element.id, {
-      src: url,
-      crop: { x: 0, y: 0, w: 1, h: 1 } as ImageCrop,
-    });
+  const handleReplace = async (file: File) => {
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      updateElement(slideId, element.id, {
+        src: dataUrl,
+        crop: { x: 0, y: 0, w: 1, h: 1 } as ImageCrop,
+      });
+    } catch (err) {
+      console.error("Failed to read replacement image", err);
+    }
   };
 
   const handleResetCrop = () => {
@@ -97,6 +103,8 @@ export function ImageFormatPanel({ element }: { element: ImageElement }) {
           e.target.value = "";
         }}
       />
+
+      <SizePositionPanel element={element} />
     </>
   );
 }

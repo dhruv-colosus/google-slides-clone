@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   gap: 0;
-  margin-left: 6px;
+  margin-left: 4px;
   margin-top: -2px;
   color: rgba(0, 0, 0, 0.9);
   position: relative;
@@ -10,9 +10,9 @@
 }
 
 .topItem {
-  padding: 3px 8px;
+  padding: 2px 5px;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   font-family: inherit;
   color: inherit;
@@ -20,7 +20,7 @@
   border: none;
   cursor: default;
   user-select: none;
-  line-height: 18px;
+  line-height: 14px;
 }
 
 .topItem:hover,
@@ -38,13 +38,13 @@
 .dropdown {
   z-index: 1000;
   background: #fff;
-  border-radius: 14px;
+  border-radius: 6px;
   box-shadow:
     0 1px 3px rgba(0, 0, 0, 0.15),
     0 4px 14px rgba(0, 0, 0, 0.14);
-  padding: 6px 0;
-  min-width: 280px;
-  max-width: 360px;
+  padding: 5px 0;
+  min-width: 240px;
+  max-width: 310px;
   max-height: calc(100vh - 80px);
   overflow-y: auto;
   font-family:
@@ -61,23 +61,23 @@
 .divider {
   height: 1px;
   background: #e8eaed;
-  margin: 6px 0;
+  margin: 5px 0;
 }
 
 .item {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 7px 14px 7px 14px;
+  padding: 5px 12px 5px 12px;
   border: none;
   background: transparent;
   font-family: inherit;
-  font-size: 14px;
-  color: #3c4043;
+  font-size: 12px;
+  color: #1f1f1f;
   cursor: pointer;
   text-align: left;
-  gap: 14px;
-  line-height: 20px;
+  gap: 12px;
+  line-height: 17px;
 }
 
 .item:hover,
@@ -97,13 +97,17 @@
 }
 
 .itemIcon {
-  width: 20px;
-  height: 20px;
+  width: 17px;
+  height: 17px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: #5f6368;
+  color: #202124;
+}
+
+.itemIcon :global(.MuiSvgIcon-root) {
+  font-size: 16px;
 }
 
 .itemLabel {
@@ -116,28 +120,29 @@
 .itemBadge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
+  padding: 1px 7px;
   background: #fef7e0;
   color: #b06000;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
-  line-height: 14px;
+  line-height: 13px;
   margin-left: 8px;
 }
 
 .itemShortcut {
-  color: #5f6368;
-  font-size: 13px;
+  color: #3c4043;
+  font-size: 11px;
   margin-left: 12px;
   white-space: nowrap;
   letter-spacing: 0.2px;
 }
 
 .itemArrow {
-  color: #5f6368;
+  color: #202124;
   margin-right: -6px;
   margin-left: 8px;
+  font-size: 16px;
 }
 
 @media (max-width: 768px) {
@@ -147,7 +152,7 @@
   }
 
   .item {
-    font-size: 13px;
-    padding: 8px 12px;
+    font-size: 11px;
+    padding: 6px 10px;
   }
 }

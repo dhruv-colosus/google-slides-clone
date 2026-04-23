@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import type { Editor } from "@tiptap/react";
 import type { ContextMenuNode } from "../components/ContextMenu";
 import type { DeckMeta, ElementId, SlideElement, SlideId } from "../model/types";
 import type { ElementPatch, ZDirection } from "../yjs/provider";
@@ -27,6 +28,10 @@ import SwapHorizOutlinedIcon from "@mui/icons-material/SwapHorizOutlined";
 import SwapVertOutlinedIcon from "@mui/icons-material/SwapVertOutlined";
 import AlignHorizontalCenterOutlinedIcon from "@mui/icons-material/AlignHorizontalCenterOutlined";
 import AlignVerticalCenterOutlinedIcon from "@mui/icons-material/AlignVerticalCenterOutlined";
+import TableRowsOutlinedIcon from "@mui/icons-material/TableRowsOutlined";
+import ViewColumnOutlinedIcon from "@mui/icons-material/ViewColumnOutlined";
+import AddBoxOutlinedIcon from "@mui/icons-material/AddBoxOutlined";
+import IndeterminateCheckBoxOutlinedIcon from "@mui/icons-material/IndeterminateCheckBoxOutlined";
 
 // Module-level clipboard — survives re-renders, cleared on page unload
 let clipboard: SlideElement | null = null;
@@ -37,6 +42,10 @@ type Actions = {
   deleteElement: (slideId: SlideId, id: ElementId) => void;
   setElementZ: (slideId: SlideId, id: ElementId, dir: ZDirection) => void;
   selectElements: (slideId: SlideId, ids: ElementId[]) => void;
+  insertTableRow?: (slideId: SlideId, id: ElementId, afterRow: number) => void;
+  insertTableColumn?: (slideId: SlideId, id: ElementId, afterCol: number) => void;
+  deleteTableRow?: (slideId: SlideId, id: ElementId, row: number) => void;
+  deleteTableColumn?: (slideId: SlideId, id: ElementId, col: number) => void;
 };
 
 export function useElementContextMenu(
@@ -44,12 +53,17 @@ export function useElementContextMenu(
   selectedElements: SlideElement[],
   meta: DeckMeta,
   actions: Actions,
+  editor: Editor | null = null,
 ): ContextMenuNode[] {
   return useMemo(() => {
     if (!slideId || selectedElements.length === 0) return [];
 
     const el = selectedElements[0];
     const hasClipboard = clipboard !== null;
+
+    if (el.type === "table") {
+      return buildTableContextMenu(slideId, el, actions);
+    }
 
     const cut = () => {
       clipboard = { ...el };
@@ -199,5 +213,100 @@ export function useElementContextMenu(
       { kind: "divider" as const },
       { label: "Update in theme", icon: PaletteOutlinedIcon },
     ];
-  }, [slideId, selectedElements, meta, actions]);
+  }, [slideId, selectedElements, meta, actions, editor]);
+}
+
+function buildTableContextMenu(
+  slideId: SlideId,
+  el: SlideElement,
+  actions: Actions,
+): ContextMenuNode[] {
+  if (el.type !== "table") return [];
+  const tableId = el.id;
+  const lastRow = Math.max(0, (el.rows ?? 1) - 1);
+  const lastCol = Math.max(0, (el.cols ?? 1) - 1);
+  const canDeleteRow = (el.rows ?? 1) > 1;
+  const canDeleteCol = (el.cols ?? 1) > 1;
+  const ready =
+    !!actions.insertTableRow &&
+    !!actions.insertTableColumn &&
+    !!actions.deleteTableRow &&
+    !!actions.deleteTableColumn;
+  const equalizeRows = () => {
+    const n = el.rows ?? 0;
+    if (n > 0) {
+      actions.updateElement(slideId, tableId, {
+        rowRatios: Array.from({ length: n }, () => 1),
+      });
+    }
+  };
+  const equalizeCols = () => {
+    const n = el.cols ?? 0;
+    if (n > 0) {
+      actions.updateElement(slideId, tableId, {
+        colRatios: Array.from({ length: n }, () => 1),
+      });
+    }
+  };
+  return [
+    {
+      label: "Insert row above",
+      icon: AddBoxOutlinedIcon,
+      disabled: !ready,
+      onSelect: () => actions.insertTableRow?.(slideId, tableId, -1),
+    },
+    {
+      label: "Insert row below",
+      icon: AddBoxOutlinedIcon,
+      disabled: !ready,
+      onSelect: () => actions.insertTableRow?.(slideId, tableId, lastRow),
+    },
+    {
+      label: "Insert column left",
+      icon: ViewColumnOutlinedIcon,
+      disabled: !ready,
+      onSelect: () => actions.insertTableColumn?.(slideId, tableId, -1),
+    },
+    {
+      label: "Insert column right",
+      icon: ViewColumnOutlinedIcon,
+      disabled: !ready,
+      onSelect: () => actions.insertTableColumn?.(slideId, tableId, lastCol),
+    },
+    { kind: "divider" as const },
+    {
+      label: "Delete last row",
+      icon: IndeterminateCheckBoxOutlinedIcon,
+      disabled: !ready || !canDeleteRow,
+      onSelect: () => actions.deleteTableRow?.(slideId, tableId, lastRow),
+    },
+    {
+      label: "Delete last column",
+      icon: IndeterminateCheckBoxOutlinedIcon,
+      disabled: !ready || !canDeleteCol,
+      onSelect: () => actions.deleteTableColumn?.(slideId, tableId, lastCol),
+    },
+    {
+      label: "Delete table",
+      icon: DeleteOutlineOutlinedIcon,
+      onSelect: () => actions.deleteElement(slideId, tableId),
+    },
+    { kind: "divider" as const },
+    {
+      label: "Distribute rows",
+      icon: TableRowsOutlinedIcon,
+      onSelect: equalizeRows,
+    },
+    {
+      label: "Distribute columns",
+      icon: ViewColumnOutlinedIcon,
+      onSelect: equalizeCols,
+    },
+    { kind: "divider" as const },
+    {
+      label: "Table properties",
+      icon: FormatPaintOutlinedIcon,
+      onSelect: () => actions.selectElements(slideId, [tableId]),
+    },
+  ];
 }

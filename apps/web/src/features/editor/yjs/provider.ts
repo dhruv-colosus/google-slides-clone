@@ -15,6 +15,7 @@ import type {
   Comment,
   CommentId,
   Deck,
+  DeckMaster,
   ElementId,
   ImageCrop,
   ShapeKind,
@@ -22,17 +23,22 @@ import type {
   SlideBackground,
   SlideElement,
   SlideId,
+  TableCell,
+  TableStyle,
   TextBlock,
 } from "../model/types";
 import {
   commentToYMap,
   elementToYMap,
+  ensureTableCellFragment,
   findCommentIndex,
   findCommentYMap,
   findElementYMap,
   findSlideIndex,
   findSlideYMap,
+  getTableCellYFragment,
   hydrateDoc,
+  populateTableCellFragments,
   populateTextFragmentFromJson,
   readDeck,
   sanitizeTextBlock,
@@ -114,6 +120,12 @@ export type ElementPatch = Partial<BaseElement> & {
   src?: string;
   alt?: string;
   crop?: ImageCrop;
+  style?: TableStyle;
+  rows?: number;
+  cols?: number;
+  colRatios?: number[];
+  rowRatios?: number[];
+  cells?: TableCell[];
 };
 
 export type ZDirection = "forward" | "backward" | "front" | "back";
@@ -133,6 +145,8 @@ export interface DocProvider {
 
   renameDeck(title: string): void;
   setDeckTheme(themeId: string): void;
+  updateMaster(fields: Partial<DeckMaster>): void;
+  setPageSize(width: number, height: number): void;
   addSlide(afterSlideId?: SlideId | null): SlideId;
   insertSlides(slides: Slide[], afterSlideId?: SlideId | null): SlideId[];
   deleteSlide(slideId: SlideId): void;
@@ -157,6 +171,23 @@ export interface DocProvider {
   setElementZ(slideId: SlideId, elementId: ElementId, direction: ZDirection): void;
 
   getTextFragment(slideId: SlideId, elementId: ElementId): Y.XmlFragment | null;
+  getTableCellFragment(
+    slideId: SlideId,
+    elementId: ElementId,
+    cellId: string,
+  ): Y.XmlFragment | null;
+  insertTableRow(
+    slideId: SlideId,
+    elementId: ElementId,
+    afterRow: number,
+  ): void;
+  insertTableColumn(
+    slideId: SlideId,
+    elementId: ElementId,
+    afterCol: number,
+  ): void;
+  deleteTableRow(slideId: SlideId, elementId: ElementId, row: number): void;
+  deleteTableColumn(slideId: SlideId, elementId: ElementId, col: number): void;
 
   addComment(input: {
     slideId: SlideId;
@@ -175,6 +206,10 @@ export interface DocProvider {
 
 function newId(prefix: string): string {
   return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function newCellId(): string {
+  return `cell-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function blankSlide(): Slide {
@@ -218,10 +253,30 @@ function extractPmText(node: unknown): string {
 }
 
 function applyElementPatch(el: YElement, patch: ElementPatch) {
+  const isTable = el.get("type") === "table";
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
     if (key === "text" && value && typeof value === "object") {
       el.set(key, sanitizeTextBlock(value as TextBlock));
+      if (el.get("type") === "shape" && !(el.get("doc") instanceof Y.XmlFragment)) {
+        el.set("doc", new Y.XmlFragment());
+      }
+      continue;
+    }
+    if (key === "style" && isTable && value && typeof value === "object") {
+      const current = (el.get("style") as TableStyle | undefined) ?? {};
+      el.set("style", { ...current, ...(value as TableStyle) });
+      continue;
+    }
+    if (key === "cells" && isTable && Array.isArray(value)) {
+      el.set(
+        "cells",
+        (value as TableCell[]).map(({ id, row, col }) => ({ id, row, col })),
+      );
+      continue;
+    }
+    if ((key === "colRatios" || key === "rowRatios") && isTable && Array.isArray(value)) {
+      el.set(key, [...(value as number[])]);
       continue;
     }
     el.set(key, value);
@@ -311,6 +366,22 @@ export class InMemoryDocProvider implements DocProvider {
     });
   };
 
+  updateMaster = (fields: Partial<DeckMaster>) => {
+    this.transact(() => {
+      const meta = this.doc.getMap("meta");
+      const current = (meta.get("master") as DeckMaster | undefined) ?? {};
+      meta.set("master", { ...current, ...fields });
+    });
+  };
+
+  setPageSize = (width: number, height: number) => {
+    this.transact(() => {
+      const meta = this.doc.getMap("meta");
+      meta.set("pageWidth", width);
+      meta.set("pageHeight", height);
+    });
+  };
+
   setSlideBackground = (slideId: SlideId, bg: SlideBackground) => {
     const slide = findSlideYMap(this.doc, slideId);
     if (!slide) return;
@@ -397,8 +468,20 @@ export class InMemoryDocProvider implements DocProvider {
         const yEls = ySlide.get("elements") as Y.Array<YElement>;
         for (let j = 0; j < source.elements.length; j++) {
           const el = source.elements[j];
-          if (el.type !== "text") continue;
-          const content = el.text.contentJson;
+          if (el.type === "table") {
+            const map = new Map<string, unknown>();
+            for (const cell of el.cells) {
+              if (cell.contentJson) map.set(cell.id, cell.contentJson);
+            }
+            if (map.size) populateTableCellFragments(yEls.get(j), map);
+            continue;
+          }
+          const content =
+            el.type === "text"
+              ? el.text.contentJson
+              : el.type === "shape"
+                ? el.text?.contentJson
+                : undefined;
           if (!content) continue;
           populateTextFragmentFromJson(yEls.get(j), content);
         }
@@ -470,6 +553,14 @@ export class InMemoryDocProvider implements DocProvider {
       els.push([yEl]);
       if (el.type === "text" && el.text.contentJson) {
         populateTextFragmentFromJson(yEl, el.text.contentJson);
+      } else if (el.type === "shape" && el.text?.contentJson) {
+        populateTextFragmentFromJson(yEl, el.text.contentJson);
+      } else if (el.type === "table") {
+        const map = new Map<string, unknown>();
+        for (const cell of el.cells) {
+          if (cell.contentJson) map.set(cell.id, cell.contentJson);
+        }
+        populateTableCellFragments(yEl, map);
       }
     });
   };
@@ -518,19 +609,48 @@ export class InMemoryDocProvider implements DocProvider {
     const s = deck.slides.find((sl) => sl.id === slideId);
     const source = s?.elements.find((e) => e.id === elementId);
     if (!source) return null;
-    const copy: SlideElement = {
-      ...cloneElementData(source),
-      id: newId("el"),
-      x: source.x + 20,
-      y: source.y + 20,
-      z: source.z + 1,
-    };
+    const cloned = cloneElementData(source);
+    let copy: SlideElement;
+    if (cloned.type === "table") {
+      // Fresh cell IDs so duplicated cells don't collide with originals in the
+      // Yjs cellFragments map.
+      const idRemap = new Map<string, string>();
+      const newCells = cloned.cells.map((c) => {
+        const nid = `cell-${crypto.randomUUID().slice(0, 8)}`;
+        idRemap.set(c.id, nid);
+        return { id: nid, row: c.row, col: c.col, contentJson: c.contentJson };
+      });
+      copy = {
+        ...cloned,
+        id: newId("el"),
+        x: cloned.x + 20,
+        y: cloned.y + 20,
+        z: cloned.z + 1,
+        cells: newCells,
+      };
+    } else {
+      copy = {
+        ...cloned,
+        id: newId("el"),
+        x: cloned.x + 20,
+        y: cloned.y + 20,
+        z: cloned.z + 1,
+      };
+    }
     const els = slide.get("elements") as Y.Array<YElement>;
     this.transact(() => {
       const yEl = elementToYMap(copy);
       els.push([yEl]);
       if (copy.type === "text" && copy.text.contentJson) {
         populateTextFragmentFromJson(yEl, copy.text.contentJson);
+      } else if (copy.type === "shape" && copy.text?.contentJson) {
+        populateTextFragmentFromJson(yEl, copy.text.contentJson);
+      } else if (copy.type === "table") {
+        const map = new Map<string, unknown>();
+        for (const cell of copy.cells) {
+          if (cell.contentJson) map.set(cell.id, cell.contentJson);
+        }
+        populateTableCellFragments(yEl, map);
       }
     });
     return copy.id;
@@ -543,6 +663,162 @@ export class InMemoryDocProvider implements DocProvider {
     if (!found) return null;
     const fragment = found.el.get("doc");
     return fragment instanceof Y.XmlFragment ? fragment : null;
+  };
+
+  getTableCellFragment = (
+    slideId: SlideId,
+    elementId: ElementId,
+    cellId: string,
+  ): Y.XmlFragment | null => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return null;
+    const found = findElementYMap(slide, elementId);
+    if (!found) return null;
+    return getTableCellYFragment(found.el, cellId);
+  };
+
+  insertTableRow = (slideId: SlideId, elementId: ElementId, afterRow: number) => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return;
+    const found = findElementYMap(slide, elementId);
+    if (!found || found.el.get("type") !== "table") return;
+    const rows = (found.el.get("rows") as number) ?? 0;
+    const cols = (found.el.get("cols") as number) ?? 0;
+    const existingCells = ((found.el.get("cells") as TableCell[]) ?? []).slice();
+    const existingRowRatios = ((found.el.get("rowRatios") as number[]) ?? []).slice();
+    const insertAt = Math.min(Math.max(afterRow + 1, 0), rows);
+
+    const shifted = existingCells.map((c) => ({
+      id: c.id,
+      row: c.row >= insertAt ? c.row + 1 : c.row,
+      col: c.col,
+    }));
+    const newRowCells: TableCell[] = [];
+    for (let c = 0; c < cols; c++) {
+      newRowCells.push({ id: newCellId(), row: insertAt, col: c });
+    }
+    const nextCells = [...shifted, ...newRowCells];
+    const nextRatios = [...existingRowRatios];
+    nextRatios.splice(insertAt, 0, 1);
+
+    this.transact(() => {
+      found.el.set("rows", rows + 1);
+      found.el.set("rowRatios", nextRatios);
+      found.el.set(
+        "cells",
+        nextCells.map(({ id, row, col }) => ({ id, row, col })),
+      );
+      for (const cell of newRowCells) {
+        ensureTableCellFragment(found.el, cell.id);
+        const map = new Map<string, unknown>([
+          [cell.id, { type: "doc", content: [{ type: "paragraph" }] }],
+        ]);
+        populateTableCellFragments(found.el, map);
+      }
+    });
+  };
+
+  insertTableColumn = (slideId: SlideId, elementId: ElementId, afterCol: number) => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return;
+    const found = findElementYMap(slide, elementId);
+    if (!found || found.el.get("type") !== "table") return;
+    const rows = (found.el.get("rows") as number) ?? 0;
+    const cols = (found.el.get("cols") as number) ?? 0;
+    const existingCells = ((found.el.get("cells") as TableCell[]) ?? []).slice();
+    const existingColRatios = ((found.el.get("colRatios") as number[]) ?? []).slice();
+    const insertAt = Math.min(Math.max(afterCol + 1, 0), cols);
+
+    const shifted = existingCells.map((c) => ({
+      id: c.id,
+      row: c.row,
+      col: c.col >= insertAt ? c.col + 1 : c.col,
+    }));
+    const newColCells: TableCell[] = [];
+    for (let r = 0; r < rows; r++) {
+      newColCells.push({ id: newCellId(), row: r, col: insertAt });
+    }
+    const nextCells = [...shifted, ...newColCells];
+    const nextRatios = [...existingColRatios];
+    nextRatios.splice(insertAt, 0, 1);
+
+    this.transact(() => {
+      found.el.set("cols", cols + 1);
+      found.el.set("colRatios", nextRatios);
+      found.el.set(
+        "cells",
+        nextCells.map(({ id, row, col }) => ({ id, row, col })),
+      );
+      for (const cell of newColCells) {
+        ensureTableCellFragment(found.el, cell.id);
+        const map = new Map<string, unknown>([
+          [cell.id, { type: "doc", content: [{ type: "paragraph" }] }],
+        ]);
+        populateTableCellFragments(found.el, map);
+      }
+    });
+  };
+
+  deleteTableRow = (slideId: SlideId, elementId: ElementId, row: number) => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return;
+    const found = findElementYMap(slide, elementId);
+    if (!found || found.el.get("type") !== "table") return;
+    const rows = (found.el.get("rows") as number) ?? 0;
+    if (rows <= 1 || row < 0 || row >= rows) return;
+    const existingCells = ((found.el.get("cells") as TableCell[]) ?? []).slice();
+    const existingRowRatios = ((found.el.get("rowRatios") as number[]) ?? []).slice();
+    const removedIds: string[] = [];
+    const nextCells: TableCell[] = [];
+    for (const c of existingCells) {
+      if (c.row === row) removedIds.push(c.id);
+      else nextCells.push({ id: c.id, row: c.row > row ? c.row - 1 : c.row, col: c.col });
+    }
+    const nextRatios = existingRowRatios.filter((_, i) => i !== row);
+
+    this.transact(() => {
+      found.el.set("rows", rows - 1);
+      found.el.set("rowRatios", nextRatios);
+      found.el.set(
+        "cells",
+        nextCells.map(({ id, row: r, col: c }) => ({ id, row: r, col: c })),
+      );
+      const cellFragments = found.el.get("cellFragments");
+      if (cellFragments instanceof Y.Map) {
+        for (const id of removedIds) cellFragments.delete(id);
+      }
+    });
+  };
+
+  deleteTableColumn = (slideId: SlideId, elementId: ElementId, col: number) => {
+    const slide = findSlideYMap(this.doc, slideId);
+    if (!slide) return;
+    const found = findElementYMap(slide, elementId);
+    if (!found || found.el.get("type") !== "table") return;
+    const cols = (found.el.get("cols") as number) ?? 0;
+    if (cols <= 1 || col < 0 || col >= cols) return;
+    const existingCells = ((found.el.get("cells") as TableCell[]) ?? []).slice();
+    const existingColRatios = ((found.el.get("colRatios") as number[]) ?? []).slice();
+    const removedIds: string[] = [];
+    const nextCells: TableCell[] = [];
+    for (const c of existingCells) {
+      if (c.col === col) removedIds.push(c.id);
+      else nextCells.push({ id: c.id, row: c.row, col: c.col > col ? c.col - 1 : c.col });
+    }
+    const nextRatios = existingColRatios.filter((_, i) => i !== col);
+
+    this.transact(() => {
+      found.el.set("cols", cols - 1);
+      found.el.set("colRatios", nextRatios);
+      found.el.set(
+        "cells",
+        nextCells.map(({ id, row, col: cc }) => ({ id, row, col: cc })),
+      );
+      const cellFragments = found.el.get("cellFragments");
+      if (cellFragments instanceof Y.Map) {
+        for (const id of removedIds) cellFragments.delete(id);
+      }
+    });
   };
 
   setElementZ = (slideId: SlideId, elementId: ElementId, direction: ZDirection) => {

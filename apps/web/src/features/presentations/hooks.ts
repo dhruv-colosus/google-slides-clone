@@ -100,7 +100,8 @@ export function useSavePresentation(id: string) {
   >({
     mutationFn: ({ content, title }) =>
       savePresentation(id, content, title),
-    onSuccess: () => {
+    onSuccess: (deck) => {
+      queryClient.setQueryData(presentationKey(id), deck);
       // Versions may have been auto-created server-side; let any open
       // history panel refetch to show them.
       queryClient.invalidateQueries({

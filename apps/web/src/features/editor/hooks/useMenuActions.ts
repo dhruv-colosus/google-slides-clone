@@ -22,6 +22,7 @@ import type {
   ShapeElement,
   ShapeKind,
   SlideElement,
+  TableElement,
   TextElement,
 } from "../model/types";
 import {
@@ -29,6 +30,7 @@ import {
   alignVertical,
   distributeHorizontal,
   distributeVertical,
+  matchSize,
   type AlignTarget,
 } from "../geometry/align";
 import { exportDeckAsPptx } from "../export/exportPptx";
@@ -99,6 +101,15 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
     setSlideBackground,
     applyLayout,
     openCommentComposer,
+    openHeaderFooterDialog,
+    openPageSetupDialog,
+    updateMaster,
+    insertTable,
+    updateTableStyle,
+    insertTableRow,
+    insertTableColumn,
+    deleteTableRow,
+    deleteTableColumn,
   } = useEditorActions();
 
   const createMutation = useCreatePresentation();
@@ -122,6 +133,42 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
     const firstShape = selectedEls.find((e) => e.type === "shape") as
       | ShapeElement
       | undefined;
+    const firstTable = selectedEls.find((e) => e.type === "table") as
+      | TableElement
+      | undefined;
+
+    const distributeTableRows = () => {
+      if (!slideId || !firstTable) return;
+      const n = firstTable.rows ?? 0;
+      if (n <= 0) return;
+      updateElement(slideId, firstTable.id, {
+        rowRatios: Array.from({ length: n }, () => 1),
+      });
+    };
+
+    const distributeTableCols = () => {
+      if (!slideId || !firstTable) return;
+      const n = firstTable.cols ?? 0;
+      if (n <= 0) return;
+      updateElement(slideId, firstTable.id, {
+        colRatios: Array.from({ length: n }, () => 1),
+      });
+    };
+
+    const deleteTableElement = () => {
+      if (!slideId || !firstTable) return;
+      deleteElement(slideId, firstTable.id);
+    };
+
+    const openTableProperties = () => {
+      if (!firstTable) {
+        window.alert("Select a table first.");
+        return;
+      }
+      // Format panel is shown automatically when a table is selected in the
+      // toolbar; surface a reminder if the toolbar is collapsed.
+      window.alert("Use the toolbar's Table panel to change header, zebra, and border.");
+    };
 
     const centerPoint = () => ({
       x: deck.meta.pageWidth / 2,
@@ -405,6 +452,7 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
       "file.versionHistory": () =>
         router.push(`/presentation/d/${deckId}/history`),
       "file.nameVersion": () => options.onOpenNameVersion?.(),
+      "file.pageSetup": () => openPageSetupDialog(),
 
       // ── Edit ────────────────────────────────────────────────
       "edit.undo": () => undo(),
@@ -496,6 +544,78 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
       "insert.comment": () => {
         if (slideId) openCommentComposer(slideId);
       },
+      "insert.headerFooter": () => openHeaderFooterDialog(),
+      "insert.table": (payload) => {
+        if (!slideId) return;
+        const p =
+          payload && typeof payload === "object"
+            ? (payload as { rows?: number; cols?: number })
+            : {};
+        const rows = Math.max(1, Math.min(20, p.rows ?? 3));
+        const cols = Math.max(1, Math.min(20, p.cols ?? 3));
+        insertTable(slideId, rows, cols);
+      },
+      "table.insertRowAbove": () => {
+        if (!slideId || !firstTable) {
+          window.alert("Select a table first.");
+          return;
+        }
+        insertTableRow(slideId, firstTable.id, -1);
+      },
+      "table.insertRowBelow": () => {
+        if (!slideId || !firstTable) {
+          window.alert("Select a table first.");
+          return;
+        }
+        insertTableRow(slideId, firstTable.id, (firstTable.rows ?? 1) - 1);
+      },
+      "table.insertColLeft": () => {
+        if (!slideId || !firstTable) {
+          window.alert("Select a table first.");
+          return;
+        }
+        insertTableColumn(slideId, firstTable.id, -1);
+      },
+      "table.insertColRight": () => {
+        if (!slideId || !firstTable) {
+          window.alert("Select a table first.");
+          return;
+        }
+        insertTableColumn(slideId, firstTable.id, (firstTable.cols ?? 1) - 1);
+      },
+      "table.deleteRow": () => {
+        if (!slideId || !firstTable) {
+          window.alert("Select a table first.");
+          return;
+        }
+        deleteTableRow(slideId, firstTable.id, (firstTable.rows ?? 1) - 1);
+      },
+      "table.deleteCol": () => {
+        if (!slideId || !firstTable) {
+          window.alert("Select a table first.");
+          return;
+        }
+        deleteTableColumn(slideId, firstTable.id, (firstTable.cols ?? 1) - 1);
+      },
+      "table.deleteTable": () => deleteTableElement(),
+      "table.distributeRows": () => distributeTableRows(),
+      "table.distributeCols": () => distributeTableCols(),
+      "table.properties": () => openTableProperties(),
+      "table.toggleHeader": () => {
+        if (!slideId || !firstTable) return;
+        const current = firstTable.style.headerEnabled ?? true;
+        updateTableStyle(slideId, firstTable.id, { headerEnabled: !current });
+      },
+      "table.toggleZebra": () => {
+        if (!slideId || !firstTable) return;
+        const current = firstTable.style.zebraEnabled ?? false;
+        updateTableStyle(slideId, firstTable.id, { zebraEnabled: !current });
+      },
+      "view.master": () => openHeaderFooterDialog(),
+      "insert.slideNumbers": () =>
+        updateMaster({ showSlideNumber: !deck.meta.master?.showSlideNumber }),
+      "insert.date": () =>
+        updateMaster({ showDate: !deck.meta.master?.showDate }),
 
       // ── Format ──────────────────────────────────────────────
       "format.text.bold": () =>
@@ -616,6 +736,21 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
         const updates = distributeVertical(alignTargets());
         if (updates.length) updateElements(slideId, updates);
       },
+      "arrange.match.width": () => {
+        if (!slideId) return;
+        const updates = matchSize(alignTargets(), "width");
+        if (updates.length) updateElements(slideId, updates);
+      },
+      "arrange.match.height": () => {
+        if (!slideId) return;
+        const updates = matchSize(alignTargets(), "height");
+        if (updates.length) updateElements(slideId, updates);
+      },
+      "arrange.match.both": () => {
+        if (!slideId) return;
+        const updates = matchSize(alignTargets(), "both");
+        if (updates.length) updateElements(slideId, updates);
+      },
       "arrange.rotate.cw": () => rotateSelection(90),
       "arrange.rotate.ccw": () => rotateSelection(-90),
       "arrange.flip.h": () => flipSelection("h"),
@@ -659,5 +794,14 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
     updateTextBlock,
     zoom,
     openCommentComposer,
+    openHeaderFooterDialog,
+    openPageSetupDialog,
+    updateMaster,
+    insertTable,
+    updateTableStyle,
+    insertTableRow,
+    insertTableColumn,
+    deleteTableRow,
+    deleteTableColumn,
   ]);
 }

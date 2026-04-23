@@ -19,6 +19,7 @@ import {
 } from "./pptxZip";
 import { parseSpElement } from "./parseSpElement";
 import { parsePicElement } from "./parsePicElement";
+import { parseGraphicFrameTable } from "./parseGraphicFrameTable";
 import { parseSlideBackground } from "./parseSlideBackground";
 import {
   parseSlideContextChain,
@@ -271,7 +272,20 @@ async function walkSpTree(
         if (hasDescendantLocal(child, "chart")) {
           recordSkip(skip, slideIndex, "chart");
         } else if (hasDescendantLocal(child, "tbl")) {
-          recordSkip(skip, slideIndex, "table");
+          const table = parseGraphicFrameTable(
+            child,
+            rels,
+            rescale,
+            zCounter.z,
+            slideIndex,
+            skip,
+            () => newId("el"),
+            themeCtx,
+          );
+          if (table) {
+            elements.push(table);
+            zCounter.z += 1;
+          }
         } else if (hasDescendantLocal(child, "relIds")) {
           recordSkip(skip, slideIndex, "smartart");
         } else {
