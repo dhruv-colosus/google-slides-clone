@@ -24,6 +24,9 @@ import {
 } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
+  ChartDataPoint,
+  ChartKind,
+  ChartStyle,
   Deck,
   DeckMaster,
   ElementId,
@@ -38,6 +41,10 @@ import type {
   Selection,
 } from "../model/types";
 import { buildDefaultTableElement } from "../model/tableDefaults";
+import {
+  buildDefaultChartElement,
+  newChartPointId,
+} from "../model/chartDefaults";
 import { getTheme, type Theme } from "../themes";
 import {
   InMemoryDocProvider,
@@ -78,6 +85,7 @@ export type UiState = {
   toast: ToastState;
   headerFooterDialogOpen: boolean;
   pageSetupDialogOpen: boolean;
+  insertingChart: ChartKind | null;
 };
 
 export type EditorState = UiState & { deck: Deck; readOnly: boolean };
@@ -105,7 +113,8 @@ type UiAction =
   | { type: "openHeaderFooterDialog" }
   | { type: "closeHeaderFooterDialog" }
   | { type: "openPageSetupDialog" }
-  | { type: "closePageSetupDialog" };
+  | { type: "closePageSetupDialog" }
+  | { type: "setInsertingChart"; kind: ChartKind | null };
 
 function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
@@ -228,6 +237,8 @@ function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, pageSetupDialogOpen: true };
     case "closePageSetupDialog":
       return { ...state, pageSetupDialogOpen: false };
+    case "setInsertingChart":
+      return { ...state, insertingChart: action.kind };
     default:
       return state;
   }
@@ -296,6 +307,7 @@ export function EditorProvider({
     toast: { key: 0, message: null, undoable: false },
     headerFooterDialogOpen: false,
     pageSetupDialogOpen: false,
+    insertingChart: null,
   }));
 
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
@@ -642,6 +654,100 @@ export function useEditorActions() {
     [provider],
   );
 
+  const insertChart = useCallback(
+    (slideId: SlideId, kind: ChartKind): ElementId | null => {
+      const deck = provider.readDeck();
+      const slide = deck.slides.find((s) => s.id === slideId);
+      if (!slide) return null;
+      const nextZ = slide.elements.length
+        ? Math.max(...slide.elements.map((e) => e.z)) + 1
+        : 1;
+      const el = buildDefaultChartElement({
+        id: `el-${crypto.randomUUID().slice(0, 8)}`,
+        kind,
+        slideWidth: deck.meta.pageWidth,
+        slideHeight: deck.meta.pageHeight,
+        z: nextZ,
+      });
+      uiDispatch({ type: "setInsertingChart", kind });
+      uiDispatch({ type: "setTool", tool: "select", pendingShapeKind: null });
+      provider.addElement(slideId, el);
+      uiDispatch({ type: "select", slideId, elementIds: [el.id] });
+      setTimeout(() => {
+        uiDispatch({ type: "setInsertingChart", kind: null });
+      }, 700);
+      return el.id;
+    },
+    [provider, uiDispatch],
+  );
+
+  const updateChartStyle = useCallback(
+    (slideId: SlideId, chartId: ElementId, patch: Partial<ChartStyle>) => {
+      provider.updateElement(slideId, chartId, { style: patch });
+    },
+    [provider],
+  );
+
+  const setChartKind = useCallback(
+    (slideId: SlideId, chartId: ElementId, kind: ChartKind) => {
+      provider.updateElement(slideId, chartId, { chartKind: kind });
+    },
+    [provider],
+  );
+
+  const setChartData = useCallback(
+    (slideId: SlideId, chartId: ElementId, data: ChartDataPoint[]) => {
+      provider.updateElement(slideId, chartId, { data });
+    },
+    [provider],
+  );
+
+  const updateChartPoint = useCallback(
+    (
+      slideId: SlideId,
+      chartId: ElementId,
+      pointId: string,
+      patch: Partial<Omit<ChartDataPoint, "id">>,
+    ) => {
+      const deck = provider.readDeck();
+      const slide = deck.slides.find((s) => s.id === slideId);
+      const el = slide?.elements.find((e) => e.id === chartId);
+      if (!el || el.type !== "chart") return;
+      const next = el.data.map((p) => (p.id === pointId ? { ...p, ...patch } : p));
+      provider.updateElement(slideId, chartId, { data: next });
+    },
+    [provider],
+  );
+
+  const addChartPoint = useCallback(
+    (slideId: SlideId, chartId: ElementId, seed?: Partial<ChartDataPoint>) => {
+      const deck = provider.readDeck();
+      const slide = deck.slides.find((s) => s.id === slideId);
+      const el = slide?.elements.find((e) => e.id === chartId);
+      if (!el || el.type !== "chart") return;
+      const point: ChartDataPoint = {
+        id: seed?.id ?? newChartPointId(),
+        label: seed?.label ?? `Category ${el.data.length + 1}`,
+        value: typeof seed?.value === "number" ? seed.value : 10,
+      };
+      provider.updateElement(slideId, chartId, { data: [...el.data, point] });
+    },
+    [provider],
+  );
+
+  const removeChartPoint = useCallback(
+    (slideId: SlideId, chartId: ElementId, pointId: string) => {
+      const deck = provider.readDeck();
+      const slide = deck.slides.find((s) => s.id === slideId);
+      const el = slide?.elements.find((e) => e.id === chartId);
+      if (!el || el.type !== "chart") return;
+      provider.updateElement(slideId, chartId, {
+        data: el.data.filter((p) => p.id !== pointId),
+      });
+    },
+    [provider],
+  );
+
   const updateTextBlock = useCallback(
     (slideId: SlideId, elementId: ElementId, partial: Partial<TextBlock>) => {
       const deck = provider.readDeck();
@@ -748,6 +854,13 @@ export function useEditorActions() {
     insertTableColumn,
     deleteTableRow,
     deleteTableColumn,
+    insertChart,
+    updateChartStyle,
+    setChartKind,
+    setChartData,
+    updateChartPoint,
+    addChartPoint,
+    removeChartPoint,
     updateTextBlock,
     toggleCommentsPanel,
     setCommentsPanelOpen,
@@ -766,5 +879,9 @@ export function useEditorActions() {
 
 export function useToast(): ToastState {
   return useEditor().ui.toast;
+}
+
+export function useInsertingChart(): ChartKind | null {
+  return useEditor().ui.insertingChart;
 }
 

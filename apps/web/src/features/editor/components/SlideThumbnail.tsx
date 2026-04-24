@@ -20,6 +20,7 @@ import {
   type Theme,
 } from "../themes";
 import type {
+  ChartElement,
   ImageElement,
   ShapeElement,
   Slide,
@@ -27,6 +28,7 @@ import type {
   TextElement,
 } from "../model/types";
 import styles from "../editor.module.css";
+import { ChartElementView } from "./ChartElementView";
 
 type PMNode = {
   type: string;
@@ -332,6 +334,22 @@ function StaticImage({ element }: { element: ImageElement }) {
   );
 }
 
+function StaticChart({ element }: { element: ChartElement }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: element.x,
+        top: element.y,
+        width: element.w,
+        height: element.h,
+      }}
+    >
+      <ChartElementView element={element} interactive={false} />
+    </div>
+  );
+}
+
 function renderElement(element: SlideElement, theme: Theme): ReactNode {
   switch (element.type) {
     case "text":
@@ -340,6 +358,8 @@ function renderElement(element: SlideElement, theme: Theme): ReactNode {
       return <StaticShape key={element.id} element={element} theme={theme} />;
     case "image":
       return <StaticImage key={element.id} element={element} />;
+    case "chart":
+      return <StaticChart key={element.id} element={element} />;
   }
 }
 

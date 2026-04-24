@@ -24,6 +24,10 @@ import {
 import { getTableCellSchema, getTextSchema } from "../tiptap/extensions";
 import type {
   BaseElement,
+  ChartDataPoint,
+  ChartElement,
+  ChartKind,
+  ChartStyle,
   Comment,
   Deck,
   DeckMaster,
@@ -149,6 +153,13 @@ function elementToYMap(el: SlideElement): YElement {
       cellFragments.set(cell.id, new Y.XmlFragment());
     }
     m.set("cellFragments", cellFragments);
+  } else if (el.type === "chart") {
+    m.set("chartKind", el.chartKind);
+    m.set("style", { ...el.style });
+    m.set(
+      "data",
+      el.data.map((p) => ({ id: p.id, label: p.label, value: p.value })),
+    );
   } else {
     m.set("src", el.src);
     if (el.alt !== undefined) m.set("alt", el.alt);
@@ -307,7 +318,12 @@ function readTableElement(m: YElement, base: BaseElement): TableElement {
 }
 
 function readElement(m: YElement): SlideElement {
-  const type = m.get("type") as "text" | "shape" | "image" | "table";
+  const type = m.get("type") as
+    | "text"
+    | "shape"
+    | "image"
+    | "table"
+    | "chart";
   const base: BaseElement = {
     id: m.get("id") as ElementId,
     x: m.get("x") as number,
@@ -320,6 +336,21 @@ function readElement(m: YElement): SlideElement {
   };
   if (type === "table") {
     return readTableElement(m, base);
+  }
+  if (type === "chart") {
+    const rawData = m.get("data") as ChartDataPoint[] | undefined;
+    const data: ChartDataPoint[] = Array.isArray(rawData)
+      ? rawData.map((p) => ({ id: p.id, label: p.label, value: p.value }))
+      : [];
+    const style = (m.get("style") as ChartStyle | undefined) ?? {};
+    const chart: ChartElement = {
+      ...base,
+      type: "chart",
+      chartKind: m.get("chartKind") as ChartKind,
+      data,
+      style: { ...style },
+    };
+    return chart;
   }
   if (type === "text") {
     const text = { ...(m.get("text") as TextElement["text"]) };

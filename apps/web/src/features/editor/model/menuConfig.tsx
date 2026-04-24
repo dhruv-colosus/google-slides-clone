@@ -367,11 +367,9 @@ export const MENU_CONFIG: TopMenu[] = [
         label: "Chart",
         icon: BarChartOutlinedIcon,
         children: [
-          { label: "Bar" },
-          { label: "Column" },
-          { label: "Line" },
-          { label: "Pie" },
-          { label: "From Sheets" },
+          { label: "Bar", action: "insert.chart.bar" },
+          { label: "Column", action: "insert.chart.column" },
+          { label: "Pie", action: "insert.chart.pie" },
         ],
       },
       {

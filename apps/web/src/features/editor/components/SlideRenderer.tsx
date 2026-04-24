@@ -13,6 +13,7 @@
 
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type {
+  ChartElement,
   DeckMaster,
   ElementId,
   ImageElement,
@@ -25,6 +26,7 @@ import { TextElementEditor } from "./TextElementEditor";
 import { TextElementPreview } from "./TextElementPreview";
 import { ShapeTextLayer, ShapeTextPreview } from "./ShapeTextLayer";
 import { TableElementEditor, TableElementPreview } from "./TableElementView";
+import { ChartElementView } from "./ChartElementView";
 import { computeArrow } from "../shapes/arrow-geometry";
 import {
   getTheme,
@@ -335,7 +337,43 @@ function ElementView({
           }}
         />
       );
+    case "chart":
+      return (
+        <ChartElementWrap
+          element={element}
+          interactive={interactive}
+          dataProps={commonDataProps}
+        />
+      );
   }
+}
+
+function ChartElementWrap({
+  element,
+  interactive,
+  dataProps,
+}: {
+  element: ChartElement;
+  interactive: boolean;
+  dataProps: DataProps;
+}) {
+  return (
+    <div
+      {...dataProps}
+      style={{
+        position: "absolute",
+        left: element.x,
+        top: element.y,
+        width: element.w,
+        height: element.h,
+        cursor: "move",
+        transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+        background: "transparent",
+      }}
+    >
+      <ChartElementView element={element} interactive={interactive} />
+    </div>
+  );
 }
 
 type DataProps = {

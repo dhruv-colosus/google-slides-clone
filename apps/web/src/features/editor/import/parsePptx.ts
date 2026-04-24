@@ -20,6 +20,7 @@ import {
 import { parseSpElement } from "./parseSpElement";
 import { parsePicElement } from "./parsePicElement";
 import { parseGraphicFrameTable } from "./parseGraphicFrameTable";
+import { parseGraphicFrameChart } from "./parseGraphicFrameChart";
 import { parseSlideBackground } from "./parseSlideBackground";
 import {
   parseSlideContextChain,
@@ -270,7 +271,23 @@ async function walkSpTree(
       }
       case "graphicFrame": {
         if (hasDescendantLocal(child, "chart")) {
-          recordSkip(skip, slideIndex, "chart");
+          const chartEl = await parseGraphicFrameChart(
+            child,
+            rels,
+            zip,
+            slidePartPath,
+            rescale,
+            zCounter.z,
+            () => newId("el"),
+          );
+          if (chartEl) {
+            elements.push(chartEl);
+            zCounter.z += 1;
+          } else {
+            // Unsupported chart shape (e.g. line, scatter, multi-series) —
+            // keep the historical skip-report entry so the toast explains why.
+            recordSkip(skip, slideIndex, "chart");
+          }
         } else if (hasDescendantLocal(child, "tbl")) {
           const table = parseGraphicFrameTable(
             child,

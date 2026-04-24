@@ -10,6 +10,7 @@ import type {
 import { resolveColor, resolveFontFamily, type Theme } from "../themes";
 import { proseMirrorToPptxRuns } from "./proseMirrorToPptxRuns";
 import { renderTableElement } from "./renderTable";
+import { renderChartElement } from "./renderChart";
 
 const PX_PER_INCH = 96;
 const pxToIn = (px: number): number => px / PX_PER_INCH;
@@ -63,6 +64,7 @@ type PptxSlide = {
   addShape: (shapeName: string, options: unknown) => unknown;
   addImage: (options: unknown) => unknown;
   addTable: (rows: unknown, options: unknown) => unknown;
+  addChart: (chartType: string, data: unknown, options: unknown) => unknown;
   background: unknown;
 };
 
@@ -230,6 +232,7 @@ async function renderElement(
   if (el.type === "shape") return renderShapeElement(slide, el, theme);
   if (el.type === "image") return renderImageElement(slide, el);
   if (el.type === "table") return renderTableElementWrap(slide, el);
+  if (el.type === "chart") return renderChartElement(slide, el);
 }
 
 const PPTXGENJS_SCRIPT_SRC = "/vendor/pptxgen.bundle.js";

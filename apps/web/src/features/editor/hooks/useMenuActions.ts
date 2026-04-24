@@ -110,6 +110,8 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
     insertTableColumn,
     deleteTableRow,
     deleteTableColumn,
+    insertChart,
+    updateChartStyle,
   } = useEditorActions();
 
   const createMutation = useCreatePresentation();
@@ -192,6 +194,12 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
           y: src.y + 20,
           z: baseZ + i,
         };
+        if (copy.type === "chart") {
+          copy.data = copy.data.map((p) => ({
+            ...p,
+            id: crypto.randomUUID().slice(0, 8),
+          }));
+        }
         addElement(slide.id, copy);
         newIds.push(copy.id);
       });
@@ -555,6 +563,19 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
         const cols = Math.max(1, Math.min(20, p.cols ?? 3));
         insertTable(slideId, rows, cols);
       },
+      "insert.chart.bar": () => {
+        if (!slideId) return;
+        const id = insertChart(slideId, "bar");
+        if (id) updateChartStyle(slideId, id, { orientation: "horizontal" });
+      },
+      "insert.chart.column": () => {
+        if (!slideId) return;
+        insertChart(slideId, "bar");
+      },
+      "insert.chart.pie": () => {
+        if (!slideId) return;
+        insertChart(slideId, "pie");
+      },
       "table.insertRowAbove": () => {
         if (!slideId || !firstTable) {
           window.alert("Select a table first.");
@@ -803,5 +824,7 @@ export function useMenuActions(options: MenuActionOptions = {}): MenuActions {
     insertTableColumn,
     deleteTableRow,
     deleteTableColumn,
+    insertChart,
+    updateChartStyle,
   ]);
 }

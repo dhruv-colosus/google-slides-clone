@@ -18,6 +18,9 @@ import RectangleOutlinedIcon from "@mui/icons-material/RectangleOutlined";
 import CircleOutlinedIcon from "@mui/icons-material/CircleOutlined";
 import ArrowRightAltRoundedIcon from "@mui/icons-material/ArrowRightAltRounded";
 import ImageOutlinedIcon from "@mui/icons-material/ImageOutlined";
+import InsertChartOutlinedIcon from "@mui/icons-material/InsertChartOutlined";
+import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
+import PieChartOutlineOutlinedIcon from "@mui/icons-material/PieChartOutlineOutlined";
 import AddCommentOutlinedIcon from "@mui/icons-material/AddCommentOutlined";
 import ExpandLessRoundedIcon from "@mui/icons-material/ExpandLessRounded";
 import {
@@ -27,6 +30,8 @@ import {
   useUndoState,
 } from "../state/EditorContext";
 import type {
+  ChartElement,
+  ChartKind,
   ImageElement,
   ShapeElement,
   ShapeKind,
@@ -38,6 +43,7 @@ import { ShapeFormatPanel } from "./ShapeFormatPanel";
 import { ImageFormatPanel } from "./ImageFormatPanel";
 import { TableFormatPanel } from "./TableFormatPanel";
 import { TableCellFormatPanel } from "./TableCellFormatPanel";
+import { ChartFormatPanel } from "./ChartFormatPanel";
 import { SelectionCommandsPanel } from "./SelectionCommandsPanel";
 import { SizePositionPanel } from "./SizePositionPanel";
 import { BackgroundPanel } from "./BackgroundPanel";
@@ -45,6 +51,7 @@ import { LayoutPicker } from "./LayoutPicker";
 import { ThemePicker } from "./ThemePicker";
 import { Dropdown } from "./FormatPanelPrimitives";
 import { useInsertImage } from "../hooks/useInsertImage";
+import { useInsertChart } from "../hooks/useInsertChart";
 import styles from "../editor.module.css";
 
 const SHAPE_OPTIONS: { kind: ShapeKind; label: string; Icon: React.ElementType }[] = [
@@ -57,16 +64,23 @@ const LINE_OPTIONS: { kind: ShapeKind; label: string; Icon: React.ElementType }[
   { kind: "arrow", label: "Arrow", Icon: ArrowRightAltRoundedIcon },
 ];
 
+const CHART_OPTIONS: { kind: ChartKind; label: string; Icon: React.ElementType }[] = [
+  { kind: "bar", label: "Bar chart", Icon: BarChartOutlinedIcon },
+  { kind: "pie", label: "Pie chart", Icon: PieChartOutlineOutlinedIcon },
+];
+
 export function Toolbar() {
   const { tool, zoom, selection, pendingShapeKind, editingElementId } = useEditorState();
   const { setTool, addSlide, undo, redo } = useEditorActions();
   const { canUndo, canRedo } = useUndoState();
   const slide = useActiveSlide();
   const insertImage = useInsertImage();
+  const insertChart = useInsertChart();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [shapeOpen, setShapeOpen] = useState(false);
   const [lineOpen, setLineOpen] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
 
   const selectedElements =
     slide && selection.slideId === slide.id
@@ -89,6 +103,10 @@ export function Toolbar() {
   const selectedTableElement: TableElement | null =
     selectedElements.length === 1 && selectedElements[0].type === "table"
       ? (selectedElements[0] as TableElement)
+      : null;
+  const selectedChartElement: ChartElement | null =
+    selectedElements.length === 1 && selectedElements[0].type === "chart"
+      ? (selectedElements[0] as ChartElement)
       : null;
   const selectedIds = selectedElements.map((e) => e.id);
 
@@ -277,6 +295,41 @@ export function Toolbar() {
               e.target.value = "";
             }}
           />
+
+          <Dropdown
+            open={chartOpen}
+            onOpen={() => setChartOpen(true)}
+            onClose={() => setChartOpen(false)}
+            trigger={
+              <button
+                className={styles.toolbarButton}
+                aria-label="Insert chart"
+                title="Insert chart"
+              >
+                <InsertChartOutlinedIcon fontSize="small" />
+                <ArrowDropDownRoundedIcon fontSize="small" />
+              </button>
+            }
+          >
+            <div className={styles.popover} style={{ minWidth: 160 }}>
+              {CHART_OPTIONS.map(({ kind, label, Icon }) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className={styles.popoverItem}
+                  onClick={() => {
+                    insertChart(kind);
+                    setChartOpen(false);
+                  }}
+                >
+                  <span className={styles.popoverItemRow}>
+                    <Icon fontSize="small" />
+                    {label}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </Dropdown>
         </div>
 
         <button className={styles.toolbarButton} aria-label="Add comment">
@@ -316,6 +369,13 @@ export function Toolbar() {
             )}
             <span className={styles.toolbarDivider} />
             <SizePositionPanel element={selectedTableElement} />
+            <SelectionCommandsPanel selectedIds={selectedIds} />
+          </>
+        ) : selectedChartElement ? (
+          <>
+            <ChartFormatPanel element={selectedChartElement} />
+            <span className={styles.toolbarDivider} />
+            <SizePositionPanel element={selectedChartElement} />
             <SelectionCommandsPanel selectedIds={selectedIds} />
           </>
         ) : selectedIds.length > 1 ? (

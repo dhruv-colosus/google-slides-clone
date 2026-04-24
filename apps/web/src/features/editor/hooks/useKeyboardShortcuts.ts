@@ -168,6 +168,12 @@ export function useKeyboardShortcuts() {
           y: src.y + 20,
           z: maxZ + 1 + i,
         };
+        if (copy.type === "chart") {
+          copy.data = copy.data.map((p) => ({
+            ...p,
+            id: crypto.randomUUID().slice(0, 8),
+          }));
+        }
         addElement(slide.id, copy);
         newIds.push(copy.id);
       });

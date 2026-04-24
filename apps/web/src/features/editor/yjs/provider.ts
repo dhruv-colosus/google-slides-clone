@@ -12,6 +12,9 @@ import * as Y from "yjs";
 import { ySyncPluginKey, yXmlFragmentToProsemirrorJSON } from "y-prosemirror";
 import type {
   BaseElement,
+  ChartDataPoint,
+  ChartKind,
+  ChartStyle,
   Comment,
   CommentId,
   Deck,
@@ -120,12 +123,14 @@ export type ElementPatch = Partial<BaseElement> & {
   src?: string;
   alt?: string;
   crop?: ImageCrop;
-  style?: TableStyle;
+  style?: TableStyle | ChartStyle;
   rows?: number;
   cols?: number;
   colRatios?: number[];
   rowRatios?: number[];
   cells?: TableCell[];
+  chartKind?: ChartKind;
+  data?: ChartDataPoint[];
 };
 
 export type ZDirection = "forward" | "backward" | "front" | "back";
@@ -253,7 +258,9 @@ function extractPmText(node: unknown): string {
 }
 
 function applyElementPatch(el: YElement, patch: ElementPatch) {
-  const isTable = el.get("type") === "table";
+  const type = el.get("type");
+  const isTable = type === "table";
+  const isChart = type === "chart";
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) continue;
     if (key === "text" && value && typeof value === "object") {
@@ -263,9 +270,9 @@ function applyElementPatch(el: YElement, patch: ElementPatch) {
       }
       continue;
     }
-    if (key === "style" && isTable && value && typeof value === "object") {
-      const current = (el.get("style") as TableStyle | undefined) ?? {};
-      el.set("style", { ...current, ...(value as TableStyle) });
+    if (key === "style" && (isTable || isChart) && value && typeof value === "object") {
+      const current = (el.get("style") as Record<string, unknown> | undefined) ?? {};
+      el.set("style", { ...current, ...(value as Record<string, unknown>) });
       continue;
     }
     if (key === "cells" && isTable && Array.isArray(value)) {
@@ -277,6 +284,17 @@ function applyElementPatch(el: YElement, patch: ElementPatch) {
     }
     if ((key === "colRatios" || key === "rowRatios") && isTable && Array.isArray(value)) {
       el.set(key, [...(value as number[])]);
+      continue;
+    }
+    if (key === "data" && isChart && Array.isArray(value)) {
+      el.set(
+        "data",
+        (value as ChartDataPoint[]).map(({ id, label, value: v }) => ({
+          id,
+          label,
+          value: v,
+        })),
+      );
       continue;
     }
     el.set(key, value);

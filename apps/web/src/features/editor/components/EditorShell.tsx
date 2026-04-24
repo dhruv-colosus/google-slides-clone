@@ -8,6 +8,7 @@ import { SlideSidebar } from "./SlideSidebar";
 import { SlideCanvas } from "./SlideCanvas";
 import { PresenterShell } from "./PresenterShell";
 import { UndoableToast } from "./UndoableToast";
+import { InsertingChartToast } from "./InsertingChartToast";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useAutoSave } from "../hooks/useAutoSave";
 import { useEditorActions, useEditorState, useSetSaveState } from "../state/EditorContext";
@@ -66,6 +67,7 @@ export function EditorShell() {
       </div>
       {showCommentsPanel && <CommentsPanel />}
       <UndoableToast />
+      <InsertingChartToast />
       {headerFooterDialogOpen && (
         <HeaderFooterDialog
           initialMaster={deck.meta.master}

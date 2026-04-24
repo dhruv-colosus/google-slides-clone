@@ -9,9 +9,11 @@
 export type ElementId = string;
 export type SlideId = string;
 
-export type ElementType = "text" | "shape" | "image" | "table";
+export type ElementType = "text" | "shape" | "image" | "table" | "chart";
 
 export type ShapeKind = "rect" | "ellipse" | "line" | "arrow";
+
+export type ChartKind = "pie" | "bar";
 
 /**
  * Block-level defaults for a text element. Inline formatting (bold, italic,
@@ -110,7 +112,33 @@ export type LegacyTableElement = BaseElement & {
   contentJson?: unknown;
 };
 
-export type SlideElement = TextElement | ShapeElement | ImageElement | TableElement;
+export type ChartDataPoint = {
+  id: string;
+  label: string;
+  value: number;
+};
+
+export type ChartStyle = {
+  colors?: string[];
+  showLegend?: boolean;
+  showValues?: boolean;
+  orientation?: "vertical" | "horizontal";
+  title?: string;
+};
+
+export type ChartElement = BaseElement & {
+  type: "chart";
+  chartKind: ChartKind;
+  data: ChartDataPoint[];
+  style: ChartStyle;
+};
+
+export type SlideElement =
+  | TextElement
+  | ShapeElement
+  | ImageElement
+  | TableElement
+  | ChartElement;
 
 export type SlideBackground =
   | { kind: "solid"; color: string }
