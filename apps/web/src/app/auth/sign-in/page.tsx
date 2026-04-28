@@ -1,8 +1,21 @@
-import { redirect } from "next/navigation";
+import { Box } from "@mui/material";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { SignInCard } from "@/features/auth/components/SignInCard";
 
 export default function SignInPage() {
-  redirect(`${API_URL}/auth/login`);
+  return (
+    <Box
+      sx={{
+        minHeight: "100dvh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        px: { xs: 2, sm: 3 },
+        py: { xs: 4, sm: 6 },
+        bgcolor: "background.default",
+      }}
+    >
+      <SignInCard />
+    </Box>
+  );
 }

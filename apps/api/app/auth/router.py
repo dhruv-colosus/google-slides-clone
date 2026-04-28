@@ -67,6 +67,13 @@ async def google_callback(
     return response
 
 
+@router.get("/config")
+def auth_config() -> dict:
+    """Public auth surface — lets the frontend conditionally render the
+    test-login button when running against a local docker stack."""
+    return {"test_auth_enabled": settings.test_auth_enabled}
+
+
 @router.get("/me", response_model=UserOut)
 async def get_me(current_user: User = Depends(get_current_user)) -> User:
     return current_user

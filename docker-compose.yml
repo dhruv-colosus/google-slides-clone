@@ -35,6 +35,10 @@ services:
       COOKIE_DOMAIN: ${COOKIE_DOMAIN}
       COOKIE_SECURE: ${COOKIE_SECURE}
       COOKIE_SAMESITE: ${COOKIE_SAMESITE}
+      TEST_AUTH_ENABLED: ${TEST_AUTH_ENABLED:-false}
+      TEST_AUTH_EMAIL: ${TEST_AUTH_EMAIL:-playwright-e2e@example.com}
+      TEST_AUTH_NAME: ${TEST_AUTH_NAME:-Playwright Test}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-}
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 10s

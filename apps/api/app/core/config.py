@@ -30,6 +30,8 @@ class Settings(BaseSettings):
     test_auth_email: str = "playwright-e2e@example.com"
     test_auth_name: str = "Playwright Test"
 
+    admin_api_key: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:
