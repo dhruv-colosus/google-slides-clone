@@ -39,6 +39,8 @@ services:
       TEST_AUTH_EMAIL: ${TEST_AUTH_EMAIL:-playwright-e2e@example.com}
       TEST_AUTH_NAME: ${TEST_AUTH_NAME:-Playwright Test}
       ADMIN_API_KEY: ${ADMIN_API_KEY:-}
+    ports:
+      - "127.0.0.1:8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
       interval: 10s
@@ -53,24 +55,10 @@ services:
       args:
         NEXT_PUBLIC_API_URL: /api
     restart: unless-stopped
-    depends_on:
-      - api
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - "127.0.0.1:3001:3000"
     depends_on:
-      - web
       - api
 
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
